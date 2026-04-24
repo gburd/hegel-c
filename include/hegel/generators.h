@@ -1,3 +1,11 @@
+/*
+ * hegel/generators.h - Generator constructors and combinators.
+ *
+ * Ownership rule: generators passed to combinators (map, filter, flat_map,
+ * one_of, lists, tuples, dicts, optional) are CONSUMED. The combinator takes
+ * ownership and will free the source generator. Do not use or free a generator
+ * after passing it to a combinator.
+ */
 #ifndef HEGEL_GENERATORS_H
 #define HEGEL_GENERATORS_H
 
@@ -7,7 +15,7 @@
 
 #include "hegel/types.h"
 
-/* Generator lifecycle */
+/* Free a generator. Only call on generators you still own (not passed to a combinator). */
 void hegel_generator_free(hegel_generator *gen);
 
 /* === Primitive Generators (all basic) === */
@@ -25,7 +33,10 @@ hegel_generator *hegel_floats_ex(double min_value, double max_value,
 hegel_generator *hegel_booleans(void);
 hegel_generator *hegel_booleans_p(double p);
 
-/* Text (UTF-8 strings) with size bounds (codepoint count) */
+/*
+ * Text (UTF-8 strings). min_size and max_size are in Unicode codepoints,
+ * not bytes, following JSON Schema convention.
+ */
 hegel_generator *hegel_text(size_t min_size, size_t max_size);
 
 /* Binary data with size bounds (byte count) */
@@ -72,17 +83,30 @@ hegel_generator *hegel_dicts(hegel_generator *keys, hegel_generator *values,
 
 /* === Combinators === */
 
-/* Map: transform output (PRESERVES schema if source is basic) */
+/*
+ * Map: transform generator output. Consumes source.
+ * If the source is basic (schema-based), the mapped generator preserves the
+ * schema and fn receives a cbor_item_t*. free_fn is called on the transformed
+ * value when it is no longer needed (may be NULL if not needed).
+ */
 typedef void *(*hegel_map_fn)(void *value, void *ctx);
 typedef void (*hegel_free_fn)(void *value);
 hegel_generator *hegel_map(hegel_generator *source, hegel_map_fn fn, void *ctx,
                             hegel_free_fn free_fn);
 
-/* FlatMap: generate a generator from a value (always non-basic) */
+/*
+ * FlatMap: generate a new generator from a drawn value. Always non-basic.
+ * Consumes source. fn receives the source value and must return a freshly
+ * allocated generator.
+ */
 typedef hegel_generator *(*hegel_flatmap_fn)(void *value, void *ctx);
 hegel_generator *hegel_flat_map(hegel_generator *source, hegel_flatmap_fn fn, void *ctx);
 
-/* Filter: keep values matching predicate (3 retries then assume(false)) */
+/*
+ * Filter: keep values matching predicate. Always non-basic. Consumes source.
+ * Retries up to 3 times; if all fail, calls hegel_assume(false) to mark the
+ * test case as INVALID.
+ */
 typedef bool (*hegel_predicate_fn)(void *value, void *ctx);
 hegel_generator *hegel_filter(hegel_generator *source, hegel_predicate_fn pred, void *ctx);
 

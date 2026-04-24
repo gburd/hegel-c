@@ -175,6 +175,7 @@ hegel_results hegel_run_test(hegel_session *s, hegel_test_fn fn, void *user_data
     cbor_item_t *request = build_run_test_request(settings,
                                                    hegel_stream_id(test_stream));
     if (!request) {
+        hegel_stream_free(test_stream);
         fail_results.error = strdup("failed to build run_test request");
         return fail_results;
     }
@@ -182,6 +183,7 @@ hegel_results hegel_run_test(hegel_session *s, hegel_test_fn fn, void *user_data
     cbor_item_t *run_reply = hegel_stream_request(control, request);
     cbor_decref(&request);
     if (!run_reply) {
+        hegel_stream_free(test_stream);
         fail_results.error = strdup("run_test request failed");
         return fail_results;
     }
@@ -192,6 +194,7 @@ hegel_results hegel_run_test(hegel_session *s, hegel_test_fn fn, void *user_data
         uint32_t msg_id;
         cbor_item_t *event = hegel_stream_recv_event(test_stream, &msg_id);
         if (!event) {
+            hegel_stream_free(test_stream);
             fail_results.error = strdup("failed to receive event from server");
             return fail_results;
         }
@@ -200,6 +203,7 @@ hegel_results hegel_run_test(hegel_session *s, hegel_test_fn fn, void *user_data
         cbor_item_t *event_type = cbor_map_get(event, "event");
         if (!event_type) {
             cbor_decref(&event);
+            hegel_stream_free(test_stream);
             fail_results.error = strdup("received event without 'event' key");
             return fail_results;
         }
@@ -207,6 +211,7 @@ hegel_results hegel_run_test(hegel_session *s, hegel_test_fn fn, void *user_data
         char *type_str = cbor_get_string(event_type);
         if (!type_str) {
             cbor_decref(&event);
+            hegel_stream_free(test_stream);
             fail_results.error = strdup("event type is not a string");
             return fail_results;
         }

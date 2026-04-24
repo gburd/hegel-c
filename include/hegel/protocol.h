@@ -29,18 +29,18 @@ typedef struct {
 
 /* Error codes */
 typedef enum {
-    HEGEL_OK = 0,
-    HEGEL_ERR_ALLOC = -1,
-    HEGEL_ERR_IO = -2,
-    HEGEL_ERR_PROTOCOL = -3,
-    HEGEL_ERR_BAD_MAGIC = -4,
-    HEGEL_ERR_BAD_CRC = -5,
-    HEGEL_ERR_BAD_TERMINATOR = -6,
-    HEGEL_ERR_HANDSHAKE = -7,
-    HEGEL_ERR_CLOSED = -8,
-    HEGEL_ERR_TIMEOUT = -9,
-    HEGEL_ERR_SERVER = -10,
-    HEGEL_ERR_CBOR = -11
+    HEGEL_OK = 0,                  /* Success */
+    HEGEL_ERR_ALLOC = -1,          /* Memory allocation failed */
+    HEGEL_ERR_IO = -2,             /* Socket read/write error */
+    HEGEL_ERR_PROTOCOL = -3,       /* Unexpected protocol state or message */
+    HEGEL_ERR_BAD_MAGIC = -4,      /* Header magic bytes != "HEGL" */
+    HEGEL_ERR_BAD_CRC = -5,        /* Payload CRC32 mismatch */
+    HEGEL_ERR_BAD_TERMINATOR = -6, /* Missing 0x0A terminator byte */
+    HEGEL_ERR_HANDSHAKE = -7,      /* Version negotiation failed */
+    HEGEL_ERR_CLOSED = -8,         /* Connection or stream already closed */
+    HEGEL_ERR_TIMEOUT = -9,        /* Response not received within deadline */
+    HEGEL_ERR_SERVER = -10,        /* Server reported an error */
+    HEGEL_ERR_CBOR = -11           /* CBOR encode/decode failure */
 } hegel_error;
 
 /* Connection management */
@@ -70,5 +70,11 @@ int hegel_stream_reply_event(hegel_stream *stream, uint32_t message_id, cbor_ite
 
 /* Get last error code (per-connection) */
 hegel_error hegel_connection_last_error(const hegel_connection *conn);
+
+/*
+ * Return the effective stream timeout in milliseconds.
+ * Checks HEGEL_STREAM_TIMEOUT env var, falls back to HEGEL_STREAM_TIMEOUT_MS.
+ */
+int hegel_stream_timeout_ms(void);
 
 #endif /* HEGEL_PROTOCOL_H */

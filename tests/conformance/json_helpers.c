@@ -181,3 +181,78 @@ char **json_get_string_array(const char *json, const char *key,
     *out_count = count;
     return results;
 }
+
+char **json_get_object_array(const char *json, const char *key,
+                             size_t *out_count)
+{
+    const char *val = find_key_value(json, key);
+    if (!val || *val != '[')
+        return NULL;
+
+    val++; /* skip '[' */
+
+    size_t count = 0;
+    size_t cap = 8;
+    char **results = malloc(cap * sizeof(char *));
+    if (!results)
+        return NULL;
+
+    const char *p = val;
+    while (*p && *p != ']') {
+        while (*p && isspace((unsigned char)*p))
+            p++;
+        if (*p == ']')
+            break;
+        if (*p == ',') {
+            p++;
+            continue;
+        }
+        if (*p != '{') {
+            p++;
+            continue;
+        }
+
+        /* Find the matching closing brace (simple nesting) */
+        const char *start = p;
+        int depth = 0;
+        do {
+            if (*p == '{') depth++;
+            else if (*p == '}') depth--;
+            else if (*p == '"') {
+                /* Skip over string contents to avoid counting braces in strings */
+                p++;
+                while (*p && *p != '"') {
+                    if (*p == '\\') p++; /* skip escaped char */
+                    if (*p) p++;
+                }
+            }
+            if (*p) p++;
+        } while (*p && depth > 0);
+
+        size_t olen = (size_t)(p - start);
+        if (count >= cap) {
+            cap *= 2;
+            char **tmp = realloc(results, cap * sizeof(char *));
+            if (!tmp) {
+                for (size_t i = 0; i < count; i++)
+                    free(results[i]);
+                free(results);
+                return NULL;
+            }
+            results = tmp;
+        }
+        results[count] = malloc(olen + 1);
+        if (!results[count]) {
+            for (size_t i = 0; i < count; i++)
+                free(results[i]);
+            free(results);
+            return NULL;
+        }
+        memcpy(results[count], start, olen);
+        results[count][olen] = '\0';
+        count++;
+    }
+
+    *out_count = count;
+    return results;
+}

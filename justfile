@@ -24,9 +24,9 @@ format:
 clean:
     rm -rf build
 
-check-conformance:
+conformance: build
     @echo "Running conformance tests..."
-    cd ../core && uv run pytest tests/conformance/ -k c99 --conformance-dir ../c/build/tests/conformance
+    cd tests/conformance && python3 -m pytest test_conformance.py -v --tb=short
 
 coverage:
     cmake -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS="--coverage" -DCMAKE_EXE_LINKER_FLAGS="--coverage"

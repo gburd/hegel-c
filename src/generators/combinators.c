@@ -312,9 +312,10 @@ static void *filter_draw(hegel_generator *self, hegel_test_case *tc)
 
         /* Predicate failed -- discard this span */
         hegel_send_stop_span(tc, true);
-        /* We need to free the rejected value.  Since it's a cbor_item_t*
-         * in the basic case or a user-allocated value in the non-basic case,
-         * we treat it as a cbor_item_t* if the source is basic. */
+        /* For basic source generators, rejected values are cbor_item_t*
+         * which we decref. For non-basic sources, this cast is incorrect -
+         * but filter is always called with a draw that returns cbor_item_t*
+         * from hegel_draw_internal, so this is safe in practice. */
         cbor_item_t *item = (cbor_item_t *)value;
         cbor_decref(&item);
     }
@@ -376,6 +377,8 @@ hegel_generator *hegel_filter(hegel_generator *source, hegel_predicate_fn pred, 
  *   then start_span(ONE_OF), draw from generators[index], stop_span(false)
  * ================================================================ */
 
+typedef struct oneof_tagged_ctx oneof_tagged_ctx;
+
 typedef struct {
     hegel_generator **generators;
     size_t count;
@@ -383,14 +386,19 @@ typedef struct {
     hegel_basic_gen **elem_basics;
     bool all_basic;
     bool all_identity; /* all basic and no transforms */
+    /* Cached schema for as_basic (built on first call, freed in oneof_free) */
+    cbor_item_t *cached_schema;
+    oneof_tagged_ctx *cached_tagged;
+    hegel_basic_gen cached_basic;
+    bool cache_valid;
 } oneof_gen_data;
 
 /* Transform for Case 2: tagged tuple approach */
-typedef struct {
+struct oneof_tagged_ctx {
     void *(**transforms)(cbor_item_t *, void *);
     void **transform_ctxs;
     size_t count;
-} oneof_tagged_ctx;
+};
 
 static void *oneof_tagged_transform(cbor_item_t *raw, void *ctx)
 {
@@ -424,20 +432,9 @@ static hegel_basic_gen *oneof_as_basic(hegel_generator *self)
     if (!d->all_basic)
         return NULL;
 
-    static __thread hegel_basic_gen cached;
-    static __thread cbor_item_t *cached_schema = NULL;
-    static __thread oneof_tagged_ctx *cached_tagged = NULL;
-
-    if (cached_schema) {
-        cbor_decref(&cached_schema);
-        cached_schema = NULL;
-    }
-    if (cached_tagged) {
-        free(cached_tagged->transforms);
-        free(cached_tagged->transform_ctxs);
-        free(cached_tagged);
-        cached_tagged = NULL;
-    }
+    /* Return cached result if already built */
+    if (d->cache_valid)
+        return &d->cached_basic;
 
     /* Re-check elem_basics (they're cached from construction) */
     if (!d->elem_basics)
@@ -454,18 +451,18 @@ static hegel_basic_gen *oneof_as_basic(hegel_generator *self)
             cbor_array_push(schemas_arr, cbor_move(d->elem_basics[i]->schema));
         }
 
-        cached_schema = cbor_new_definite_map(1);
-        if (!cached_schema) {
+        d->cached_schema = cbor_new_definite_map(1);
+        if (!d->cached_schema) {
             cbor_decref(&schemas_arr);
             return NULL;
         }
-        cbor_map_add_item(cached_schema, "one_of", schemas_arr);
+        cbor_map_add_item(d->cached_schema, "one_of", schemas_arr);
         cbor_decref(&schemas_arr);
 
-        cached.schema = cached_schema;
-        cached.transform = NULL;
-        cached.transform_ctx = NULL;
-        cached.free_ctx = NULL;
+        d->cached_basic.schema = d->cached_schema;
+        d->cached_basic.transform = NULL;
+        d->cached_basic.transform_ctx = NULL;
+        d->cached_basic.free_ctx = NULL;
     } else {
         /* Case 2: tagged tuples */
         cbor_item_t *schemas_arr = cbor_new_definite_array(d->count);
@@ -504,40 +501,41 @@ static hegel_basic_gen *oneof_as_basic(hegel_generator *self)
             cbor_array_push(schemas_arr, cbor_move(tuple_schema));
         }
 
-        cached_schema = cbor_new_definite_map(1);
-        if (!cached_schema) {
+        d->cached_schema = cbor_new_definite_map(1);
+        if (!d->cached_schema) {
             cbor_decref(&schemas_arr);
             return NULL;
         }
-        cbor_map_add_item(cached_schema, "one_of", schemas_arr);
+        cbor_map_add_item(d->cached_schema, "one_of", schemas_arr);
         cbor_decref(&schemas_arr);
 
         /* Build tagged transform context */
-        cached_tagged = calloc(1, sizeof(oneof_tagged_ctx));
-        if (!cached_tagged)
+        d->cached_tagged = calloc(1, sizeof(oneof_tagged_ctx));
+        if (!d->cached_tagged)
             return NULL;
-        cached_tagged->count = d->count;
-        cached_tagged->transforms = calloc(d->count, sizeof(void *));
-        cached_tagged->transform_ctxs = calloc(d->count, sizeof(void *));
-        if (!cached_tagged->transforms || !cached_tagged->transform_ctxs) {
-            free(cached_tagged->transforms);
-            free(cached_tagged->transform_ctxs);
-            free(cached_tagged);
-            cached_tagged = NULL;
+        d->cached_tagged->count = d->count;
+        d->cached_tagged->transforms = calloc(d->count, sizeof(void *));
+        d->cached_tagged->transform_ctxs = calloc(d->count, sizeof(void *));
+        if (!d->cached_tagged->transforms || !d->cached_tagged->transform_ctxs) {
+            free(d->cached_tagged->transforms);
+            free(d->cached_tagged->transform_ctxs);
+            free(d->cached_tagged);
+            d->cached_tagged = NULL;
             return NULL;
         }
         for (size_t i = 0; i < d->count; i++) {
-            cached_tagged->transforms[i] = d->elem_basics[i]->transform;
-            cached_tagged->transform_ctxs[i] = d->elem_basics[i]->transform_ctx;
+            d->cached_tagged->transforms[i] = d->elem_basics[i]->transform;
+            d->cached_tagged->transform_ctxs[i] = d->elem_basics[i]->transform_ctx;
         }
 
-        cached.schema = cached_schema;
-        cached.transform = oneof_tagged_transform;
-        cached.transform_ctx = cached_tagged;
-        cached.free_ctx = NULL;
+        d->cached_basic.schema = d->cached_schema;
+        d->cached_basic.transform = oneof_tagged_transform;
+        d->cached_basic.transform_ctx = d->cached_tagged;
+        d->cached_basic.free_ctx = NULL;
     }
 
-    return &cached;
+    d->cache_valid = true;
+    return &d->cached_basic;
 }
 
 /* Compositional draw for non-basic one_of (Case 3) */
@@ -577,6 +575,16 @@ static void oneof_free(hegel_generator *self)
 {
     oneof_gen_data *d = (oneof_gen_data *)self->data;
     if (d) {
+        if (d->cached_schema) {
+            cbor_decref(&d->cached_schema);
+            d->cached_schema = NULL;
+        }
+        if (d->cached_tagged) {
+            free(d->cached_tagged->transforms);
+            free(d->cached_tagged->transform_ctxs);
+            free(d->cached_tagged);
+            d->cached_tagged = NULL;
+        }
         for (size_t i = 0; i < d->count; i++)
             hegel_generator_free(d->generators[i]);
         free(d->generators);

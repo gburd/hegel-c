@@ -5,6 +5,28 @@
 #include <stdlib.h>
 #include <string.h>
 
+/*
+ * Return the stream timeout in milliseconds, allowing override via the
+ * HEGEL_STREAM_TIMEOUT environment variable.  Falls back to the
+ * compile-time HEGEL_STREAM_TIMEOUT_MS default.
+ */
+static int get_stream_timeout_ms(void)
+{
+    const char *env = getenv("HEGEL_STREAM_TIMEOUT");
+    if (env && env[0] != '\0') {
+        int val = atoi(env);
+        if (val > 0)
+            return val;
+    }
+    return HEGEL_STREAM_TIMEOUT_MS;
+}
+
+/* Expose the effective timeout for callers that need it. */
+int hegel_stream_timeout_ms(void)
+{
+    return get_stream_timeout_ms();
+}
+
 hegel_stream *hegel_stream_new(hegel_connection *conn, uint32_t stream_id)
 {
     hegel_stream *stream = calloc(1, sizeof(hegel_stream));

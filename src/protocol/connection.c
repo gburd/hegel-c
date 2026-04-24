@@ -3,9 +3,25 @@
 #include "packet.h"
 #include "cbor_helpers.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+/*
+ * Check whether protocol-level debug tracing is enabled via the
+ * HEGEL_PROTOCOL_DEBUG environment variable.  The result is cached
+ * after the first call.
+ */
+static bool protocol_debug_enabled(void)
+{
+    static int cached = -1;
+    if (cached < 0) {
+        const char *env = getenv("HEGEL_PROTOCOL_DEBUG");
+        cached = (env && strcmp(env, "1") == 0) ? 1 : 0;
+    }
+    return cached == 1;
+}
 
 /*
  * Handshake constants.
@@ -170,6 +186,14 @@ int hegel_connection_read_packet(hegel_connection *conn, hegel_packet *pkt)
     /* Decode the full packet */
     rc = hegel_packet_decode(buf, total, pkt);
     free(buf);
+
+    if (rc == HEGEL_OK && protocol_debug_enabled()) {
+        fprintf(stderr, "[hegel] RECV stream=%u msg_id=%u%s payload=%zu bytes\n",
+                pkt->stream_id, pkt->message_id,
+                pkt->is_reply ? " (reply)" : "",
+                pkt->payload_len);
+    }
+
     return rc;
 }
 
@@ -191,6 +215,11 @@ int hegel_connection_send_packet(hegel_connection *conn, const hegel_packet *pkt
     free(buf);
     if (rc != HEGEL_OK) {
         conn->last_error = HEGEL_ERR_IO;
+    } else if (protocol_debug_enabled()) {
+        fprintf(stderr, "[hegel] SEND stream=%u msg_id=%u%s payload=%zu bytes\n",
+                pkt->stream_id, pkt->message_id,
+                pkt->is_reply ? " (reply)" : "",
+                pkt->payload_len);
     }
     return rc;
 }

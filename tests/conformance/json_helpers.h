@@ -47,4 +47,15 @@ char *json_get_string(const char *json, const char *key);
 char **json_get_string_array(const char *json, const char *key,
                              size_t *out_count);
 
+/*
+ * Parse a JSON array of objects for a given key.
+ * Returns an array of newly allocated strings, each containing the raw
+ * JSON text of one array element (e.g. "{\"min_value\": 0, \"max_value\": 100}").
+ * Sets *out_count to the number of elements.
+ * Caller must free each string and the array.
+ * Returns NULL if not found or on error.
+ */
+char **json_get_object_array(const char *json, const char *key,
+                             size_t *out_count);
+
 #endif /* HEGEL_CONFORMANCE_JSON_HELPERS_H */
