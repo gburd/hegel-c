@@ -419,16 +419,11 @@ static void test_dicts_schema(void **state)
     hegel_generator *gen = hegel_dicts(keys, vals, 0, 5);
     assert_non_null(gen);
 
+    /* Dicts always use the compositional (collection protocol) path because
+     * the server's "dict" schema returns a list of [key, value] pairs, not
+     * a CBOR map.  as_basic returns NULL to force this path. */
     hegel_basic_gen *basic = gen->vtable.as_basic(gen);
-    assert_non_null(basic);
-
-    char *type = get_map_string(basic->schema, "type");
-    assert_non_null(type);
-    assert_string_equal(type, "dict");
-    free(type);
-
-    assert_int_equal(get_map_int(basic->schema, "min_size"), 0);
-    assert_int_equal(get_map_int(basic->schema, "max_size"), 5);
+    assert_null(basic);
 
     hegel_generator_free(gen);
 }

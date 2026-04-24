@@ -39,6 +39,38 @@ hegel_generator *hegel_booleans_p(double p);
  */
 hegel_generator *hegel_text(size_t min_size, size_t max_size);
 
+/*
+ * Text with full Unicode filtering parameters.
+ * All pointer parameters are optional (NULL to omit).
+ * categories and exclude_categories are mutually exclusive.
+ *
+ * codec             - Restrict to characters encodable in this codec (e.g. "ascii", "utf-8").
+ * min_codepoint     - Minimum Unicode codepoint (0 to omit).
+ * max_codepoint     - Maximum Unicode codepoint (0 to omit).
+ * categories        - NULL-terminated array of Unicode general categories to include (e.g. {"L","Nd",NULL}).
+ * exclude_categories - NULL-terminated array of Unicode general categories to exclude.
+ * include_characters - Always include these specific characters even if excluded by other filters.
+ * exclude_characters - Always exclude these specific characters.
+ */
+hegel_generator *hegel_text_ex(size_t min_size, size_t max_size,
+                                const char *codec,
+                                uint32_t min_codepoint, uint32_t max_codepoint,
+                                const char **categories,
+                                const char **exclude_categories,
+                                const char *include_characters,
+                                const char *exclude_characters);
+
+/*
+ * Single Unicode character generator. Equivalent to hegel_text_ex(1, 1, ...).
+ * All pointer parameters are optional (NULL to omit).
+ */
+hegel_generator *hegel_characters(const char *codec,
+                                   uint32_t min_codepoint, uint32_t max_codepoint,
+                                   const char **categories,
+                                   const char **exclude_categories,
+                                   const char *include_characters,
+                                   const char *exclude_characters);
+
 /* Binary data with size bounds (byte count) */
 hegel_generator *hegel_binary(size_t min_size, size_t max_size);
 

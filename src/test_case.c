@@ -39,6 +39,19 @@ void hegel_assume(bool condition)
     longjmp(tc->escape_jmp, HEGEL_JMP_ASSUME);
 }
 
+void hegel_fail(const char *message)
+{
+    hegel_test_case *tc = _current_tc;
+    if (!tc)
+        return;
+
+    tc->status = HEGEL_STATUS_INTERESTING;
+    tc->jmp_reason = HEGEL_JMP_FAIL;
+    free(tc->error_message);
+    tc->error_message = message ? strdup(message) : strdup("test failed");
+    longjmp(tc->escape_jmp, HEGEL_JMP_FAIL);
+}
+
 void hegel_target(double value, const char *label)
 {
     hegel_test_case *tc = _current_tc;
@@ -135,7 +148,20 @@ double hegel_draw_float(hegel_test_case *tc, hegel_generator *gen)
     const cbor_item_t *inner = cbor_unwrap_tags(item);
     double result = 0.0;
     if (inner && cbor_isa_float_ctrl(inner) && cbor_is_float(inner)) {
-        result = cbor_float_get_float8(inner);
+        /* Must check width: NaN/Infinity are often encoded as float16 */
+        switch (cbor_float_get_width(inner)) {
+        case CBOR_FLOAT_16:
+            result = cbor_float_get_float2(inner);
+            break;
+        case CBOR_FLOAT_32:
+            result = cbor_float_get_float4(inner);
+            break;
+        case CBOR_FLOAT_64:
+            result = cbor_float_get_float8(inner);
+            break;
+        default:
+            break;
+        }
     } else if (inner && cbor_isa_uint(inner)) {
         result = (double)cbor_get_uint_value(inner);
     } else if (inner && cbor_isa_negint(inner)) {

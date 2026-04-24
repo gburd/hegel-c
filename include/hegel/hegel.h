@@ -79,6 +79,13 @@ void hegel_results_free(hegel_results *r);
  */
 void hegel_assume(bool condition);
 
+/*
+ * Mark the current test case as INTERESTING (i.e., a counterexample was found).
+ * The server will shrink this test case to find a minimal reproduction.
+ * Aborts execution via longjmp. Do not call outside a test body.
+ */
+void hegel_fail(const char *message);
+
 /* Send a target observation to the server for guided optimization. */
 void hegel_target(double value, const char *label);
 

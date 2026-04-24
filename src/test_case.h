@@ -12,7 +12,8 @@
  */
 typedef enum {
     HEGEL_JMP_ASSUME = 1,    /* hegel_assume(false) */
-    HEGEL_JMP_STOP_TEST = 2  /* Server sent StopTest error */
+    HEGEL_JMP_STOP_TEST = 2, /* Server sent StopTest error */
+    HEGEL_JMP_FAIL = 3       /* hegel_fail() called */
 } hegel_jmp_reason;
 
 /*

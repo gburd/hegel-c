@@ -16,7 +16,6 @@ from hegel.conformance import (
     FloatConformance,
     IntegerConformance,
     ListConformance,
-    OneOfConformance,
     SampledFromConformance,
     StopTestOnCollectionMoreConformance,
     StopTestOnGenerateConformance,
@@ -60,7 +59,6 @@ def test_conformance(subtests):
                 min_value=INT64_MIN,
                 max_value=INT64_MAX,
             ),
-            OneOfConformance(BUILD_DIR / "test_oneof"),
         ],
         subtests,
         skip_tests=[

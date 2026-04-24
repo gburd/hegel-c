@@ -14,7 +14,7 @@
  * Send mark_complete on a test case stream.
  */
 static int send_mark_complete(hegel_stream *stream, hegel_status status,
-                               const char *error_msg)
+                               const char *origin_msg)
 {
     const char *status_str;
     switch (status) {
@@ -32,19 +32,28 @@ static int send_mark_complete(hegel_stream *stream, hegel_status status,
         break;
     }
 
-    int pairs = 2;
-    if (status == HEGEL_STATUS_INTERESTING && error_msg)
-        pairs = 3;
-
-    cbor_item_t *map = cbor_new_definite_map(pairs);
+    cbor_item_t *map = cbor_new_definite_map(3);
     if (!map)
         return HEGEL_ERR_ALLOC;
 
     cbor_map_add_string(map, "command", "mark_complete");
     cbor_map_add_string(map, "status", status_str);
 
-    if (status == HEGEL_STATUS_INTERESTING && error_msg)
-        cbor_map_add_string(map, "error", error_msg);
+    /* Origin is used by the server for deduplication of interesting cases. */
+    if (status == HEGEL_STATUS_INTERESTING && origin_msg) {
+        cbor_map_add_string(map, "origin", origin_msg);
+    } else {
+        /* Send null origin for VALID/INVALID */
+        cbor_item_t *k = cbor_build_string("origin");
+        cbor_item_t *v = cbor_new_null();
+        if (k && v) {
+            struct cbor_pair pair = {.key = cbor_move(k), .value = cbor_move(v)};
+            cbor_map_add(map, pair);
+        } else {
+            if (k) cbor_decref(&k);
+            if (v) cbor_decref(&v);
+        }
+    }
 
     cbor_item_t *reply = hegel_stream_request(stream, map);
     cbor_decref(&map);
@@ -273,6 +282,10 @@ hegel_results hegel_run_test(hegel_session *s, hegel_test_fn fn, void *user_data
             } else if (jmp_val == HEGEL_JMP_ASSUME) {
                 /* hegel_assume(false) was called -> INVALID */
                 send_mark_complete(tc_stream, HEGEL_STATUS_INVALID, NULL);
+            } else if (jmp_val == HEGEL_JMP_FAIL) {
+                /* hegel_fail() was called -> INTERESTING */
+                send_mark_complete(tc_stream, HEGEL_STATUS_INTERESTING,
+                                   tc.error_message);
             } else if (jmp_val == HEGEL_JMP_STOP_TEST) {
                 /* StopTest: do NOT send mark_complete */
             }

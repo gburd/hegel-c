@@ -2,46 +2,82 @@
  * Conformance test: lists generator.
  *
  * Params: {"min_size": <int>, "max_size": <int>,
- *          "element_min": <int>, "element_max": <int>}
- * Metrics: {"length": <list_length>}
+ *          "min_value": <int>, "max_value": <int>, "unique": <bool>}
+ * Metrics: {"elements": [<int>, ...]}
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <cbor.h>
 
 #include "hegel/hegel.h"
 #include "hegel/generators.h"
 #include "json_helpers.h"
 
+static int64_t cbor_to_int64(cbor_item_t *item)
+{
+    uint64_t raw;
+    switch (cbor_int_get_width(item)) {
+    case CBOR_INT_8:  raw = cbor_get_uint8(item); break;
+    case CBOR_INT_16: raw = cbor_get_uint16(item); break;
+    case CBOR_INT_32: raw = cbor_get_uint32(item); break;
+    case CBOR_INT_64: raw = cbor_get_uint64(item); break;
+    default: return 0;
+    }
+    if (cbor_isa_uint(item))
+        return (int64_t)raw;
+    if (cbor_isa_negint(item))
+        return -1 - (int64_t)raw;
+    return 0;
+}
+
 static FILE *metrics_file;
 static int64_t g_min_size;
 static int64_t g_max_size;
-static int64_t g_element_min;
-static int64_t g_element_max;
+static int64_t g_min_value;
+static int64_t g_max_value;
+static bool g_unique;
 
 static void test_fn(hegel_test_case *tc, void *user_data)
 {
     (void)user_data;
 
-    hegel_generator *elem_gen = hegel_integers(g_element_min, g_element_max);
-    hegel_generator *list_gen = hegel_lists(elem_gen, (size_t)g_min_size, (size_t)g_max_size);
+    hegel_generator *elem_gen = hegel_integers(g_min_value, g_max_value);
+    hegel_generator *list_gen;
+    if (g_unique)
+        list_gen = hegel_lists_unique(elem_gen, (size_t)g_min_size, (size_t)g_max_size);
+    else
+        list_gen = hegel_lists(elem_gen, (size_t)g_min_size, (size_t)g_max_size);
 
     void *raw = hegel_draw_raw(tc, list_gen);
     if (!raw) {
-        fprintf(metrics_file, "{\"length\": 0}\n");
+        fprintf(metrics_file, "{\"elements\": []}\n");
         hegel_generator_free(list_gen);
         return;
     }
 
     cbor_item_t *arr = (cbor_item_t *)raw;
-    size_t length = 0;
-    if (cbor_isa_array(arr))
-        length = cbor_array_size(arr);
+    fprintf(metrics_file, "{\"elements\": [");
 
-    fprintf(metrics_file, "{\"length\": %zu}\n", length);
+    if (cbor_isa_array(arr)) {
+        size_t n = cbor_array_size(arr);
+        for (size_t i = 0; i < n; i++) {
+            cbor_item_t *elem = cbor_array_get(arr, i);
+            if (!elem)
+                continue;
 
+            int64_t val = cbor_to_int64(elem);
+
+            if (i > 0)
+                fprintf(metrics_file, ", ");
+            fprintf(metrics_file, "%" PRId64, val);
+            cbor_decref(&elem);
+        }
+    }
+
+    fprintf(metrics_file, "]}\n");
     cbor_decref(&arr);
     hegel_generator_free(list_gen);
 }
@@ -55,18 +91,16 @@ int main(int argc, char **argv)
 
     const char *params = argv[1];
 
-    if (!json_get_int(params, "min_size", &g_min_size)) {
+    if (!json_get_int(params, "min_size", &g_min_size))
         g_min_size = 0;
-    }
-    if (!json_get_int(params, "max_size", &g_max_size)) {
-        g_max_size = 10;
-    }
-    if (!json_get_int(params, "element_min", &g_element_min)) {
-        g_element_min = 0;
-    }
-    if (!json_get_int(params, "element_max", &g_element_max)) {
-        g_element_max = 100;
-    }
+    if (!json_get_int(params, "max_size", &g_max_size))
+        g_max_size = g_min_size + 50; /* null means no upper bound */
+    if (!json_get_int(params, "min_value", &g_min_value))
+        g_min_value = 0;
+    if (!json_get_int(params, "max_value", &g_max_value))
+        g_max_value = 100;
+    if (!json_get_bool(params, "unique", &g_unique))
+        g_unique = false;
 
     const char *tc_str = getenv("CONFORMANCE_TEST_CASES");
     int test_cases = tc_str ? atoi(tc_str) : 50;

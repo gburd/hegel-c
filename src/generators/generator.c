@@ -57,19 +57,20 @@ static cbor_item_t *send_tc_request(hegel_test_case *tc, cbor_item_t *request)
         return NULL;
     }
 
-    /* Check for error key */
+    /* Check for error key - server sends {error: <msg>, type: <error_type>} */
     cbor_item_t *error_val = cbor_map_get(reply, "error");
     if (error_val) {
-        char *error_str = cbor_get_string(error_val);
-        if (error_str && strcmp(error_str, "StopTest") == 0) {
-            free(error_str);
+        cbor_item_t *type_val = cbor_map_get(reply, "type");
+        char *type_str = type_val ? cbor_get_string(type_val) : NULL;
+        if (type_str && strcmp(type_str, "StopTest") == 0) {
+            free(type_str);
             cbor_decref(&reply);
             /* StopTest: longjmp out */
             tc->aborted = true;
             tc->jmp_reason = HEGEL_JMP_STOP_TEST;
             longjmp(tc->escape_jmp, HEGEL_JMP_STOP_TEST);
         }
-        free(error_str);
+        free(type_str);
         cbor_decref(&reply);
         return NULL;
     }

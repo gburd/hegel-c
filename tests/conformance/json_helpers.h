@@ -58,4 +58,19 @@ char **json_get_string_array(const char *json, const char *key,
 char **json_get_object_array(const char *json, const char *key,
                              size_t *out_count);
 
+/*
+ * Parse a JSON array of integers for a given key.
+ * Sets *out_count and returns a heap-allocated array.
+ * Caller must free the array.
+ * Returns NULL if not found or on error.
+ */
+int64_t *json_get_int_array(const char *json, const char *key,
+                             size_t *out_count);
+
+/*
+ * Check if a key's value is JSON null.
+ * Returns true if the key exists and has value "null".
+ */
+bool json_is_null(const char *json, const char *key);
+
 #endif /* HEGEL_CONFORMANCE_JSON_HELPERS_H */

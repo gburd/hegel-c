@@ -136,9 +136,35 @@ static void test_assume_false(void **state)
     hegel_session_free(s);
 }
 
-/* NOTE: counterexample detection test requires a hegel_fail() API
- * (to signal INTERESTING status from the test body) which is not
- * yet implemented. Skipped for now. */
+/* ================================================================
+ * Test: hegel_fail() marks test case as INTERESTING
+ * ================================================================ */
+static void test_fn_always_fail(hegel_test_case *tc, void *user_data)
+{
+    (void)user_data;
+    int64_t val = hegel_draw_int(tc, hegel_integers(0, 100));
+    (void)val;
+    hegel_fail("always fails");
+    /* Should not reach here (hegel_fail longjmps) */
+}
+
+static void test_fail_finds_counterexample(void **state)
+{
+    (void)state;
+
+    hegel_session *s = hegel_session_new();
+    assert_non_null(s);
+
+    hegel_settings settings = HEGEL_DEFAULT_SETTINGS;
+    settings.max_examples = 10;
+
+    hegel_results r = hegel_run_test(s, test_fn_always_fail, NULL, &settings);
+    assert_false(r.passed);
+    assert_true(r.interesting_test_cases > 0);
+
+    hegel_results_free(&r);
+    hegel_session_free(s);
+}
 
 /* ================================================================
  * Test: multiple sessions
@@ -203,6 +229,7 @@ int main(void)
         cmocka_unit_test(test_booleans_basic),
         cmocka_unit_test(test_text_in_bounds),
         cmocka_unit_test(test_assume_false),
+        cmocka_unit_test(test_fail_finds_counterexample),
 
         cmocka_unit_test(test_multiple_sessions),
         cmocka_unit_test(test_multiple_runs),

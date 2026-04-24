@@ -96,35 +96,44 @@ hegel_generator *hegel_floats_ex(double min_value, double max_value,
                                   bool exclude_min, bool exclude_max,
                                   bool allow_nan, bool allow_infinity, int width)
 {
-    /* Schema: {"type": "float", "min_value": min, "max_value": max, ...} */
-    cbor_item_t *schema = cbor_new_definite_map(7);
+    /* Count fields: type + width are always present; others conditional */
+    int nfields = 2; /* type + width */
+    if (!isnan(min_value)) nfields += 2; /* min_value + exclude_min */
+    if (!isnan(max_value)) nfields += 2; /* max_value + exclude_max */
+    nfields += 2; /* allow_nan + allow_infinity */
+
+    cbor_item_t *schema = cbor_new_definite_map(nfields);
     if (!schema)
         return NULL;
     cbor_map_add_string(schema, "type", "float");
 
-    /* Add min_value as a CBOR float */
-    cbor_item_t *k_min = cbor_build_string("min_value");
-    cbor_item_t *v_min = cbor_build_float8(min_value);
-    if (k_min && v_min) {
-        struct cbor_pair pair = {.key = cbor_move(k_min), .value = cbor_move(v_min)};
-        cbor_map_add(schema, pair);
-    } else {
-        if (k_min) cbor_decref(&k_min);
-        if (v_min) cbor_decref(&v_min);
+    /* Only include min/max when finite (NaN means "no bound") */
+    if (!isnan(min_value)) {
+        cbor_item_t *k = cbor_build_string("min_value");
+        cbor_item_t *v = cbor_build_float8(min_value);
+        if (k && v) {
+            struct cbor_pair pair = {.key = cbor_move(k), .value = cbor_move(v)};
+            cbor_map_add(schema, pair);
+        } else {
+            if (k) cbor_decref(&k);
+            if (v) cbor_decref(&v);
+        }
+        cbor_map_add_bool(schema, "exclude_min", exclude_min);
     }
 
-    cbor_item_t *k_max = cbor_build_string("max_value");
-    cbor_item_t *v_max = cbor_build_float8(max_value);
-    if (k_max && v_max) {
-        struct cbor_pair pair = {.key = cbor_move(k_max), .value = cbor_move(v_max)};
-        cbor_map_add(schema, pair);
-    } else {
-        if (k_max) cbor_decref(&k_max);
-        if (v_max) cbor_decref(&v_max);
+    if (!isnan(max_value)) {
+        cbor_item_t *k = cbor_build_string("max_value");
+        cbor_item_t *v = cbor_build_float8(max_value);
+        if (k && v) {
+            struct cbor_pair pair = {.key = cbor_move(k), .value = cbor_move(v)};
+            cbor_map_add(schema, pair);
+        } else {
+            if (k) cbor_decref(&k);
+            if (v) cbor_decref(&v);
+        }
+        cbor_map_add_bool(schema, "exclude_max", exclude_max);
     }
 
-    cbor_map_add_bool(schema, "exclude_min", exclude_min);
-    cbor_map_add_bool(schema, "exclude_max", exclude_max);
     cbor_map_add_bool(schema, "allow_nan", allow_nan);
     cbor_map_add_bool(schema, "allow_infinity", allow_infinity);
     cbor_map_add_int(schema, "width", (int64_t)width);
@@ -185,6 +194,95 @@ hegel_generator *hegel_text(size_t min_size, size_t max_size)
     return make_basic_gen(schema, NULL, NULL, NULL);
 }
 
+hegel_generator *hegel_text_ex(size_t min_size, size_t max_size,
+                                const char *codec,
+                                uint32_t min_codepoint, uint32_t max_codepoint,
+                                const char **categories,
+                                const char **exclude_categories,
+                                const char *include_characters,
+                                const char *exclude_characters)
+{
+    /* Count the number of fields: type + min_size + max_size is always 3 */
+    int nfields = 3;
+    if (codec) nfields++;
+    if (min_codepoint > 0) nfields++;
+    if (max_codepoint > 0) nfields++;
+    if (categories) nfields++;
+    if (exclude_categories) nfields++;
+    if (include_characters) nfields++;
+    if (exclude_characters) nfields++;
+
+    cbor_item_t *schema = cbor_new_definite_map(nfields);
+    if (!schema)
+        return NULL;
+
+    cbor_map_add_string(schema, "type", "string");
+    cbor_map_add_int(schema, "min_size", (int64_t)min_size);
+    cbor_map_add_int(schema, "max_size", (int64_t)max_size);
+
+    if (codec)
+        cbor_map_add_string(schema, "codec", codec);
+
+    if (min_codepoint > 0)
+        cbor_map_add_int(schema, "min_codepoint", (int64_t)min_codepoint);
+
+    if (max_codepoint > 0)
+        cbor_map_add_int(schema, "max_codepoint", (int64_t)max_codepoint);
+
+    if (categories) {
+        /* Count NULL-terminated array */
+        size_t count = 0;
+        while (categories[count]) count++;
+
+        cbor_item_t *arr = cbor_new_definite_array(count);
+        if (arr) {
+            for (size_t i = 0; i < count; i++) {
+                cbor_item_t *s = cbor_build_string(categories[i]);
+                if (s)
+                    (void)cbor_array_push(arr, cbor_move(s));
+            }
+            cbor_map_add_item(schema, "categories", arr);
+            cbor_decref(&arr);
+        }
+    }
+
+    if (exclude_categories) {
+        size_t count = 0;
+        while (exclude_categories[count]) count++;
+
+        cbor_item_t *arr = cbor_new_definite_array(count);
+        if (arr) {
+            for (size_t i = 0; i < count; i++) {
+                cbor_item_t *s = cbor_build_string(exclude_categories[i]);
+                if (s)
+                    (void)cbor_array_push(arr, cbor_move(s));
+            }
+            cbor_map_add_item(schema, "exclude_categories", arr);
+            cbor_decref(&arr);
+        }
+    }
+
+    if (include_characters)
+        cbor_map_add_string(schema, "include_characters", include_characters);
+
+    if (exclude_characters)
+        cbor_map_add_string(schema, "exclude_characters", exclude_characters);
+
+    return make_basic_gen(schema, NULL, NULL, NULL);
+}
+
+hegel_generator *hegel_characters(const char *codec,
+                                   uint32_t min_codepoint, uint32_t max_codepoint,
+                                   const char **categories,
+                                   const char **exclude_categories,
+                                   const char *include_characters,
+                                   const char *exclude_characters)
+{
+    return hegel_text_ex(1, 1, codec, min_codepoint, max_codepoint,
+                         categories, exclude_categories,
+                         include_characters, exclude_characters);
+}
+
 /* ================================================================
  * Binary
  * ================================================================ */
@@ -214,7 +312,7 @@ static void *just_null_transform(cbor_item_t *raw, void *ctx)
 {
     (void)raw;
     (void)ctx;
-    return NULL;
+    return cbor_new_null();
 }
 
 hegel_generator *hegel_just_null(void)
@@ -248,11 +346,10 @@ static void *just_int_transform(cbor_item_t *raw, void *ctx)
 {
     (void)raw;
     just_int_ctx *c = (just_int_ctx *)ctx;
-    int64_t *result = malloc(sizeof(int64_t));
-    if (!result)
-        return NULL;
-    *result = c->value;
-    return result;
+    if (c->value >= 0)
+        return cbor_build_uint64((uint64_t)c->value);
+    else
+        return cbor_build_negint64((uint64_t)(-1 - c->value));
 }
 
 static void just_int_free_ctx(void *ctx)
@@ -297,11 +394,7 @@ static void *just_float_transform(cbor_item_t *raw, void *ctx)
 {
     (void)raw;
     just_float_ctx *c = (just_float_ctx *)ctx;
-    double *result = malloc(sizeof(double));
-    if (!result)
-        return NULL;
-    *result = c->value;
-    return result;
+    return cbor_build_float8(c->value);
 }
 
 static void just_float_free_ctx(void *ctx)
@@ -346,7 +439,7 @@ static void *just_string_transform(cbor_item_t *raw, void *ctx)
 {
     (void)raw;
     just_string_ctx *c = (just_string_ctx *)ctx;
-    return strdup(c->value);
+    return cbor_build_string(c->value);
 }
 
 static void just_string_free_ctx(void *ctx)
@@ -401,11 +494,7 @@ static void *just_bool_transform(cbor_item_t *raw, void *ctx)
 {
     (void)raw;
     just_bool_ctx *c = (just_bool_ctx *)ctx;
-    bool *result = malloc(sizeof(bool));
-    if (!result)
-        return NULL;
-    *result = c->value;
-    return result;
+    return cbor_build_bool(c->value);
 }
 
 static void just_bool_free_ctx(void *ctx)
@@ -462,7 +551,7 @@ static void *sampled_strings_transform(cbor_item_t *raw, void *ctx)
         idx = cbor_get_uint_value(raw);
     if (idx >= c->count)
         idx = 0;
-    return strdup(c->values[idx]);
+    return cbor_build_string(c->values[idx]);
 }
 
 static void sampled_strings_free_ctx(void *ctx)
@@ -527,11 +616,11 @@ static void *sampled_ints_transform(cbor_item_t *raw, void *ctx)
         idx = cbor_get_uint_value(raw);
     if (idx >= c->count)
         idx = 0;
-    int64_t *result = malloc(sizeof(int64_t));
-    if (!result)
-        return NULL;
-    *result = c->values[idx];
-    return result;
+    int64_t val = c->values[idx];
+    if (val >= 0)
+        return cbor_build_uint64((uint64_t)val);
+    else
+        return cbor_build_negint64((uint64_t)(-1 - val));
 }
 
 static void sampled_ints_free_ctx(void *ctx)

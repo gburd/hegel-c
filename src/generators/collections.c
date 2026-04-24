@@ -427,47 +427,15 @@ typedef struct {
 
 static hegel_basic_gen *dict_as_basic(hegel_generator *self)
 {
-    dict_gen_data *d = (dict_gen_data *)self->data;
-
-    /* Both keys and values must be basic */
-    hegel_basic_gen *key_basic = NULL;
-    hegel_basic_gen *val_basic = NULL;
-
-    if (d->keys->vtable.as_basic)
-        key_basic = d->keys->vtable.as_basic(d->keys);
-    if (d->values->vtable.as_basic)
-        val_basic = d->values->vtable.as_basic(d->values);
-
-    if (!key_basic || !val_basic)
-        return NULL;
-
-    /* Build dict schema:
-     * {"type":"dict","keys":<kschema>,"values":<vschema>,"min_size":min,"max_size":max} */
-    static __thread hegel_basic_gen cached;
-    static __thread cbor_item_t *cached_schema = NULL;
-
-    if (cached_schema) {
-        cbor_decref(&cached_schema);
-        cached_schema = NULL;
-    }
-
-    cached_schema = cbor_new_definite_map(5);
-    if (!cached_schema)
-        return NULL;
-
-    cbor_map_add_string(cached_schema, "type", "dict");
-    cbor_map_add_item(cached_schema, "keys", key_basic->schema);
-    cbor_map_add_item(cached_schema, "values", val_basic->schema);
-    cbor_map_add_int(cached_schema, "min_size", (int64_t)d->min_size);
-    cbor_map_add_int(cached_schema, "max_size", (int64_t)d->max_size);
-
-    cached.schema = cached_schema;
-    /* TODO: compose key/value transforms if needed */
-    cached.transform = NULL;
-    cached.transform_ctx = NULL;
-    cached.free_ctx = NULL;
-
-    return &cached;
+    /*
+     * Always use compositional (collection protocol) path for dicts.
+     *
+     * The server's "dict" schema type returns results as a list of
+     * [key, value] pairs rather than a CBOR map. Using the collection
+     * protocol avoids this mismatch, matching Go and Rust behavior.
+     */
+    (void)self;
+    return NULL;
 }
 
 /* Compositional draw for non-basic dicts */

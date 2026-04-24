@@ -1,32 +1,29 @@
 /*
  * Conformance test: sampled_from generator.
  *
- * Params: {"options": ["a", "b", "c"]}
- * Metrics: {"value": "<string>"}
+ * Params: {"options": [<int>, ...]}
+ * Metrics: {"value": <int>}
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
+#include <inttypes.h>
 
 #include "hegel/hegel.h"
 #include "hegel/generators.h"
 #include "json_helpers.h"
 
 static FILE *metrics_file;
-static const char **g_options;
+static int64_t *g_options;
 static size_t g_count;
 
 static void test_fn(hegel_test_case *tc, void *user_data)
 {
     (void)user_data;
-    char *val = hegel_draw_string(tc,
-        hegel_sampled_from_strings(g_options, g_count));
-    if (val) {
-        fprintf(metrics_file, "{\"value\": \"%s\"}\n", val);
-        free(val);
-    } else {
-        fprintf(metrics_file, "{\"value\": null}\n");
-    }
+    int64_t val = hegel_draw_int(tc,
+        hegel_sampled_from_ints(g_options, g_count));
+    fprintf(metrics_file, "{\"value\": %" PRId64 "}\n", val);
 }
 
 int main(int argc, char **argv)
@@ -38,12 +35,11 @@ int main(int argc, char **argv)
 
     const char *params = argv[1];
 
-    char **options = json_get_string_array(params, "options", &g_count);
-    if (!options || g_count == 0) {
+    g_options = json_get_int_array(params, "options", &g_count);
+    if (!g_options || g_count == 0) {
         fprintf(stderr, "Missing or empty options array\n");
         return 1;
     }
-    g_options = (const char **)options;
 
     const char *tc_str = getenv("CONFORMANCE_TEST_CASES");
     int test_cases = tc_str ? atoi(tc_str) : 50;
@@ -75,10 +71,7 @@ int main(int argc, char **argv)
     hegel_results_free(&r);
     hegel_session_free(s);
 
-    /* Clean up options */
-    for (size_t i = 0; i < g_count; i++)
-        free(options[i]);
-    free(options);
+    free(g_options);
 
     return r.passed ? 0 : 1;
 }

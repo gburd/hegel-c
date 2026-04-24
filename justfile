@@ -26,7 +26,8 @@ clean:
 
 conformance: build
     @echo "Running conformance tests..."
-    cd tests/conformance && python3 -m pytest test_conformance.py -v --tb=short
+    uv run --with 'hegel-core==0.4.1' --with pytest --with pytest-subtests --with hypothesis \
+        pytest tests/conformance/test_conformance.py -v --tb=short
 
 coverage:
     cmake -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS="--coverage" -DCMAKE_EXE_LINKER_FLAGS="--coverage"

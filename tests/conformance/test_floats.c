@@ -3,7 +3,7 @@
  *
  * Params: {"min_value": <float>, "max_value": <float>,
  *          "allow_nan": <bool>, "allow_infinity": <bool>}
- * Metrics: {"value": <float>}
+ * Metrics: {"value": <float|null>, "is_nan": <bool>, "is_infinite": <bool>}
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,6 +17,8 @@
 static FILE *metrics_file;
 static double g_min_value;
 static double g_max_value;
+static bool g_exclude_min;
+static bool g_exclude_max;
 static bool g_allow_nan;
 static bool g_allow_infinity;
 
@@ -25,16 +27,18 @@ static void test_fn(hegel_test_case *tc, void *user_data)
     (void)user_data;
     double val = hegel_draw_float(tc,
         hegel_floats_ex(g_min_value, g_max_value,
-                        false, false,
+                        g_exclude_min, g_exclude_max,
                         g_allow_nan, g_allow_infinity, 64));
 
-    if (isnan(val)) {
-        fprintf(metrics_file, "{\"value\": \"NaN\"}\n");
-    } else if (isinf(val)) {
-        fprintf(metrics_file, "{\"value\": \"%s\"}\n",
-                val > 0 ? "Infinity" : "-Infinity");
+    bool is_nan = isnan(val);
+    bool is_inf = isinf(val);
+
+    if (is_nan) {
+        fprintf(metrics_file, "{\"value\": null, \"is_nan\": true, \"is_infinite\": false}\n");
+    } else if (is_inf) {
+        fprintf(metrics_file, "{\"value\": null, \"is_nan\": false, \"is_infinite\": true}\n");
     } else {
-        fprintf(metrics_file, "{\"value\": %.17g}\n", val);
+        fprintf(metrics_file, "{\"value\": %.17g, \"is_nan\": false, \"is_infinite\": false}\n", val);
     }
 }
 
@@ -47,17 +51,28 @@ int main(int argc, char **argv)
 
     const char *params = argv[1];
 
-    if (!json_get_number(params, "min_value", &g_min_value)) {
-        g_min_value = -1e308;
-    }
-    if (!json_get_number(params, "max_value", &g_max_value)) {
-        g_max_value = 1e308;
-    }
+    bool has_min = json_get_number(params, "min_value", &g_min_value);
+    bool has_max = json_get_number(params, "max_value", &g_max_value);
+
+    /* NaN sentinel means "no bound" -- hegel_floats_ex omits from schema */
+    if (!has_min)
+        g_min_value = NAN;
+    if (!has_max)
+        g_max_value = NAN;
+
+    if (!json_get_bool(params, "exclude_min", &g_exclude_min))
+        g_exclude_min = false;
+    if (!json_get_bool(params, "exclude_max", &g_exclude_max))
+        g_exclude_max = false;
+
+    /* allow_nan/allow_infinity: when JSON value is null, apply Hypothesis
+     * defaults: NaN allowed only when no bounds set, infinity allowed when
+     * at most one bound is set. */
     if (!json_get_bool(params, "allow_nan", &g_allow_nan)) {
-        g_allow_nan = false;
+        g_allow_nan = !has_min && !has_max;
     }
     if (!json_get_bool(params, "allow_infinity", &g_allow_infinity)) {
-        g_allow_infinity = false;
+        g_allow_infinity = !has_min || !has_max;
     }
 
     const char *tc_str = getenv("CONFORMANCE_TEST_CASES");
