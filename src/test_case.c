@@ -31,8 +31,10 @@ void hegel_assume(bool condition)
         return;
 
     hegel_test_case *tc = _current_tc;
-    if (!tc)
+    if (!tc) {
+        fprintf(stderr, "hegel warning: hegel_assume() called with no active test case\n");
         return;
+    }
 
     tc->status = HEGEL_STATUS_INVALID;
     tc->jmp_reason = HEGEL_JMP_ASSUME;
@@ -42,8 +44,10 @@ void hegel_assume(bool condition)
 void hegel_fail(const char *message)
 {
     hegel_test_case *tc = _current_tc;
-    if (!tc)
+    if (!tc) {
+        fprintf(stderr, "hegel warning: hegel_fail() called with no active test case\n");
         return;
+    }
 
     tc->status = HEGEL_STATUS_INTERESTING;
     tc->jmp_reason = HEGEL_JMP_FAIL;
@@ -55,8 +59,10 @@ void hegel_fail(const char *message)
 void hegel_target(double value, const char *label)
 {
     hegel_test_case *tc = _current_tc;
-    if (!tc || !tc->stream)
+    if (!tc || !tc->stream) {
+        fprintf(stderr, "hegel warning: hegel_target() called with no active test case\n");
         return;
+    }
 
     /* Build: {"command": "target", "value": <float>, "label": <string or null>} */
     int pairs = (label != NULL) ? 3 : 2;
@@ -92,7 +98,11 @@ void hegel_target(double value, const char *label)
 void hegel_note(const char *message)
 {
     hegel_test_case *tc = _current_tc;
-    if (!tc || !message)
+    if (!tc) {
+        fprintf(stderr, "hegel warning: hegel_note() called with no active test case\n");
+        return;
+    }
+    if (!message)
         return;
 
     /* Only print notes during the final (shrunk) replay */
@@ -163,6 +173,10 @@ double hegel_draw_float(hegel_test_case *tc, hegel_generator *gen)
             break;
         }
     } else if (inner && cbor_isa_uint(inner)) {
+        /* The server may encode whole-number floats (e.g. 0.0, 1.0) as CBOR
+         * integers rather than CBOR floats. This is valid per the CBOR spec
+         * (RFC 8949 preferred serialization) and happens in practice during
+         * generation and shrinking. */
         result = (double)cbor_get_uint_value(inner);
     } else if (inner && cbor_isa_negint(inner)) {
         result = (double)(-1 - (int64_t)cbor_get_uint_value(inner));

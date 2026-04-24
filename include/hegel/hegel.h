@@ -21,10 +21,17 @@ typedef enum {
 } hegel_status;
 
 /*
- * Test results returned by hegel_run_test().
+ * Test results returned by value from hegel_run_test().
  *
- * `seed` and `error` are heap-allocated strings owned by this struct.
- * Callers MUST call hegel_results_free() to release them.
+ * This struct is typically stack-allocated (returned by value), so there is no
+ * need to free the struct itself. However, it owns heap-allocated strings
+ * (`seed` and `error`) that must be released by calling hegel_results_free().
+ *
+ * Usage:
+ *   hegel_results r = hegel_run_test(session, my_test, NULL, &settings);
+ *   // ... inspect r.passed, r.seed, r.error, etc. ...
+ *   hegel_results_free(&r);   // frees r.seed and r.error, not &r
+ *
  * If `passed` is true, `error` will be NULL.
  */
 typedef struct {
@@ -66,6 +73,12 @@ typedef void (*hegel_test_fn)(hegel_test_case *tc, void *user_data);
 /* Run a property test */
 hegel_results hegel_run_test(hegel_session *s, hegel_test_fn fn, void *user_data,
                               const hegel_settings *settings);
+
+/*
+ * Free the owned resources inside a hegel_results struct (seed and error
+ * strings). This does NOT free the struct itself, since it is typically
+ * stack-allocated (returned by value from hegel_run_test).
+ */
 void hegel_results_free(hegel_results *r);
 
 /*

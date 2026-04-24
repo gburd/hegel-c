@@ -29,6 +29,9 @@ hegel_generator *hegel_floats_ex(double min_value, double max_value,
                                   bool exclude_min, bool exclude_max,
                                   bool allow_nan, bool allow_infinity, int width);
 
+/* Null values */
+hegel_generator *hegel_nulls(void);
+
 /* Booleans with optional probability */
 hegel_generator *hegel_booleans(void);
 hegel_generator *hegel_booleans_p(double p);
@@ -41,6 +44,8 @@ hegel_generator *hegel_text(size_t min_size, size_t max_size);
 
 /*
  * Text with full Unicode filtering parameters.
+ * min_size and max_size are in Unicode codepoints, not bytes, matching
+ * JSON Schema convention (same as hegel_text()).
  * All pointer parameters are optional (NULL to omit).
  * categories and exclude_categories are mutually exclusive.
  *
@@ -105,6 +110,13 @@ hegel_generator *hegel_datetimes(void);
 /* Lists of elements with size bounds */
 hegel_generator *hegel_lists(hegel_generator *elements, size_t min_size, size_t max_size);
 hegel_generator *hegel_lists_unique(hegel_generator *elements, size_t min_size, size_t max_size);
+
+/* Arrays: alias for hegel_lists */
+static inline hegel_generator *hegel_arrays(hegel_generator *elements,
+                                             size_t min_size, size_t max_size)
+{
+    return hegel_lists(elements, min_size, max_size);
+}
 
 /* Fixed-size tuples */
 hegel_generator *hegel_tuples(hegel_generator **elements, size_t count);

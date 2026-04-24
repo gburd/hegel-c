@@ -301,6 +301,21 @@ hegel_generator *hegel_binary(size_t min_size, size_t max_size)
 }
 
 /* ================================================================
+ * Nulls
+ * ================================================================ */
+
+hegel_generator *hegel_nulls(void)
+{
+    /* Schema: {"type": "null"} */
+    cbor_item_t *schema = cbor_new_definite_map(1);
+    if (!schema)
+        return NULL;
+    cbor_map_add_string(schema, "type", "null");
+
+    return make_basic_gen(schema, NULL, NULL, NULL);
+}
+
+/* ================================================================
  * Just (constant) generators
  *
  * Schema is always {"constant": null}.

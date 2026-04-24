@@ -45,7 +45,6 @@ void *hegel_draw_internal(hegel_test_case *tc, hegel_generator *gen);
 #define HEGEL_SPAN_FLAT_MAP      11
 #define HEGEL_SPAN_FILTER        12
 #define HEGEL_SPAN_MAPPED        13
-#define HEGEL_SPAN_SAMPLED_FROM  14
 
 /* Protocol helpers for generators (send commands on the test case stream) */
 void hegel_send_start_span(hegel_test_case *tc, int label);

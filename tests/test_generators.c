@@ -166,6 +166,59 @@ static void test_binary_schema(void **state)
 }
 
 /* ------------------------------------------------------------------
+ * Test: nulls schema
+ * ------------------------------------------------------------------ */
+static void test_nulls_schema(void **state)
+{
+    (void)state;
+
+    hegel_generator *gen = hegel_nulls();
+    assert_non_null(gen);
+
+    hegel_basic_gen *basic = gen->vtable.as_basic(gen);
+    assert_non_null(basic);
+
+    /* Schema: {"type": "null"} */
+    char *type = get_map_string(basic->schema, "type");
+    assert_non_null(type);
+    assert_string_equal(type, "null");
+    free(type);
+
+    /* No transform for nulls generator */
+    assert_null(basic->transform);
+
+    hegel_generator_free(gen);
+}
+
+/* ------------------------------------------------------------------
+ * Test: arrays alias (delegates to lists)
+ * ------------------------------------------------------------------ */
+static void test_arrays_alias(void **state)
+{
+    (void)state;
+
+    hegel_generator *elems = hegel_integers(0, 50);
+    assert_non_null(elems);
+
+    hegel_generator *gen = hegel_arrays(elems, 2, 8);
+    assert_non_null(gen);
+
+    hegel_basic_gen *basic = gen->vtable.as_basic(gen);
+    assert_non_null(basic);
+
+    /* Should produce the same schema as hegel_lists */
+    char *type = get_map_string(basic->schema, "type");
+    assert_non_null(type);
+    assert_string_equal(type, "list");
+    free(type);
+
+    assert_int_equal(get_map_int(basic->schema, "min_size"), 2);
+    assert_int_equal(get_map_int(basic->schema, "max_size"), 8);
+
+    hegel_generator_free(gen);
+}
+
+/* ------------------------------------------------------------------
  * Test: just_null schema
  * ------------------------------------------------------------------ */
 static void test_just_null_schema(void **state)
@@ -429,6 +482,134 @@ static void test_dicts_schema(void **state)
 }
 
 /* ------------------------------------------------------------------
+ * Test: cbor_unwrap_tags on untagged items (passthrough)
+ * ------------------------------------------------------------------ */
+static void test_unwrap_tags_passthrough(void **state)
+{
+    (void)state;
+
+    /* An untagged integer should pass through unchanged */
+    cbor_item_t *num = cbor_build_uint64(42);
+    assert_non_null(num);
+
+    const cbor_item_t *inner = cbor_unwrap_tags(num);
+    assert_ptr_equal(inner, num);
+    assert_true(cbor_isa_uint(inner));
+    assert_int_equal(cbor_get_uint64(inner), 42);
+
+    cbor_decref(&num);
+
+    /* NULL should pass through as NULL */
+    assert_null(cbor_unwrap_tags(NULL));
+}
+
+/* ------------------------------------------------------------------
+ * Test: cbor_unwrap_tags on singly-tagged items
+ * ------------------------------------------------------------------ */
+static void test_unwrap_tags_single(void **state)
+{
+    (void)state;
+
+    /* Wrap a string in tag 91 (text as bytestring, common from Python cbor2) */
+    cbor_item_t *str = cbor_build_string("hello");
+    assert_non_null(str);
+
+    cbor_item_t *tagged = cbor_new_tag(91);
+    assert_non_null(tagged);
+    cbor_tag_set_item(tagged, cbor_move(str));
+
+    /* The tagged item should be a tag */
+    assert_true(cbor_isa_tag(tagged));
+
+    /* Unwrapping should reach the inner string */
+    const cbor_item_t *inner = cbor_unwrap_tags(tagged);
+    assert_non_null(inner);
+    assert_true(cbor_isa_string(inner));
+    assert_int_equal(cbor_string_length(inner), 5);
+    assert_memory_equal(cbor_string_handle(inner), "hello", 5);
+
+    cbor_decref(&tagged);
+}
+
+/* ------------------------------------------------------------------
+ * Test: cbor_unwrap_tags on nested tags (multiple layers)
+ * ------------------------------------------------------------------ */
+static void test_unwrap_tags_nested(void **state)
+{
+    (void)state;
+
+    /* Build: tag(1, tag(2, 99)) -- two tag layers around an integer */
+    cbor_item_t *num = cbor_build_uint8(99);
+    assert_non_null(num);
+
+    cbor_item_t *inner_tag = cbor_new_tag(2);
+    assert_non_null(inner_tag);
+    cbor_tag_set_item(inner_tag, cbor_move(num));
+
+    cbor_item_t *outer_tag = cbor_new_tag(1);
+    assert_non_null(outer_tag);
+    cbor_tag_set_item(outer_tag, cbor_move(inner_tag));
+
+    assert_true(cbor_isa_tag(outer_tag));
+
+    const cbor_item_t *inner = cbor_unwrap_tags(outer_tag);
+    assert_non_null(inner);
+    assert_true(cbor_isa_uint(inner));
+    assert_int_equal(cbor_get_uint8(inner), 99);
+
+    cbor_decref(&outer_tag);
+}
+
+/* ------------------------------------------------------------------
+ * Test: cbor_get_string handles tagged bytestrings
+ *
+ * The server (Python cbor2) may wrap text as tag(91, bytestring).
+ * cbor_get_string() calls cbor_unwrap_tags() internally.
+ * ------------------------------------------------------------------ */
+static void test_get_string_tagged_bytestring(void **state)
+{
+    (void)state;
+
+    /* Build tag(91, b"world") */
+    cbor_item_t *bs = cbor_build_bytestring((const cbor_data)"world", 5);
+    assert_non_null(bs);
+
+    cbor_item_t *tagged = cbor_new_tag(91);
+    assert_non_null(tagged);
+    cbor_tag_set_item(tagged, cbor_move(bs));
+
+    char *result = cbor_get_string(tagged);
+    assert_non_null(result);
+    assert_string_equal(result, "world");
+    free(result);
+
+    cbor_decref(&tagged);
+}
+
+/* ------------------------------------------------------------------
+ * Test: cbor_get_string handles tagged text strings
+ * ------------------------------------------------------------------ */
+static void test_get_string_tagged_text(void **state)
+{
+    (void)state;
+
+    /* Build tag(42, "tagged text") */
+    cbor_item_t *str = cbor_build_string("tagged text");
+    assert_non_null(str);
+
+    cbor_item_t *tagged = cbor_new_tag(42);
+    assert_non_null(tagged);
+    cbor_tag_set_item(tagged, cbor_move(str));
+
+    char *result = cbor_get_string(tagged);
+    assert_non_null(result);
+    assert_string_equal(result, "tagged text");
+    free(result);
+
+    cbor_decref(&tagged);
+}
+
+/* ------------------------------------------------------------------
  * Test: NULL and edge case handling
  * ------------------------------------------------------------------ */
 static void test_generator_null_inputs(void **state)
@@ -477,6 +658,8 @@ int main(void)
         cmocka_unit_test(test_booleans_schema),
         cmocka_unit_test(test_text_schema),
         cmocka_unit_test(test_binary_schema),
+        cmocka_unit_test(test_nulls_schema),
+        cmocka_unit_test(test_arrays_alias),
         cmocka_unit_test(test_just_null_schema),
         cmocka_unit_test(test_sampled_from_strings_schema),
         cmocka_unit_test(test_map_preserves_basic),
@@ -487,6 +670,11 @@ int main(void)
         cmocka_unit_test(test_lists_schema),
         cmocka_unit_test(test_dicts_schema),
         cmocka_unit_test(test_generator_null_inputs),
+        cmocka_unit_test(test_unwrap_tags_passthrough),
+        cmocka_unit_test(test_unwrap_tags_single),
+        cmocka_unit_test(test_unwrap_tags_nested),
+        cmocka_unit_test(test_get_string_tagged_bytestring),
+        cmocka_unit_test(test_get_string_tagged_text),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }
