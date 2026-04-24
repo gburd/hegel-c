@@ -272,6 +272,64 @@ static void test_sampled_from_strings_schema(void **state)
 }
 
 /* ------------------------------------------------------------------
+ * Test: sampled_from_floats schema
+ * ------------------------------------------------------------------ */
+static void test_sampled_from_floats_schema(void **state)
+{
+    (void)state;
+
+    const double options[] = {1.5, 2.7, 3.14};
+    hegel_generator *gen = hegel_sampled_from_floats(options, 3);
+    assert_non_null(gen);
+
+    hegel_basic_gen *basic = gen->vtable.as_basic(gen);
+    assert_non_null(basic);
+
+    /* Schema should be an integer schema [0, count-1] */
+    char *type = get_map_string(basic->schema, "type");
+    assert_non_null(type);
+    assert_string_equal(type, "integer");
+    free(type);
+
+    assert_int_equal(get_map_int(basic->schema, "min_value"), 0);
+    assert_int_equal(get_map_int(basic->schema, "max_value"), 2);
+
+    /* Has a transform (converts index to float) */
+    assert_non_null(basic->transform);
+
+    hegel_generator_free(gen);
+}
+
+/* ------------------------------------------------------------------
+ * Test: sampled_from_bools schema
+ * ------------------------------------------------------------------ */
+static void test_sampled_from_bools_schema(void **state)
+{
+    (void)state;
+
+    const bool options[] = {true, false};
+    hegel_generator *gen = hegel_sampled_from_bools(options, 2);
+    assert_non_null(gen);
+
+    hegel_basic_gen *basic = gen->vtable.as_basic(gen);
+    assert_non_null(basic);
+
+    /* Schema should be an integer schema [0, count-1] */
+    char *type = get_map_string(basic->schema, "type");
+    assert_non_null(type);
+    assert_string_equal(type, "integer");
+    free(type);
+
+    assert_int_equal(get_map_int(basic->schema, "min_value"), 0);
+    assert_int_equal(get_map_int(basic->schema, "max_value"), 1);
+
+    /* Has a transform (converts index to bool) */
+    assert_non_null(basic->transform);
+
+    hegel_generator_free(gen);
+}
+
+/* ------------------------------------------------------------------
  * Test: map preserves basic-ness (central optimization)
  * ------------------------------------------------------------------ */
 static void *double_int(void *value, void *ctx)
@@ -624,6 +682,18 @@ static void test_generator_null_inputs(void **state)
     const char *vals[] = {"a"};
     assert_null(hegel_sampled_from_strings(vals, 0));
 
+    /* sampled_from_floats with NULL/0 */
+    assert_null(hegel_sampled_from_floats(NULL, 0));
+    assert_null(hegel_sampled_from_floats(NULL, 3));
+    const double fvals[] = {1.0};
+    assert_null(hegel_sampled_from_floats(fvals, 0));
+
+    /* sampled_from_bools with NULL/0 */
+    assert_null(hegel_sampled_from_bools(NULL, 0));
+    assert_null(hegel_sampled_from_bools(NULL, 2));
+    const bool bvals[] = {true};
+    assert_null(hegel_sampled_from_bools(bvals, 0));
+
     /* map with NULL source */
     assert_null(hegel_map(NULL, double_int, NULL, NULL));
 
@@ -662,6 +732,8 @@ int main(void)
         cmocka_unit_test(test_arrays_alias),
         cmocka_unit_test(test_just_null_schema),
         cmocka_unit_test(test_sampled_from_strings_schema),
+        cmocka_unit_test(test_sampled_from_floats_schema),
+        cmocka_unit_test(test_sampled_from_bools_schema),
         cmocka_unit_test(test_map_preserves_basic),
         cmocka_unit_test(test_filter_becomes_non_basic),
         cmocka_unit_test(test_flat_map_non_basic),

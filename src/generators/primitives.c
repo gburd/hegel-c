@@ -674,4 +674,110 @@ hegel_generator *hegel_sampled_from_ints(const int64_t *values, size_t count)
     return make_basic_gen(schema, sampled_ints_transform, ctx, sampled_ints_free_ctx);
 }
 
+/* -- sampled_from_floats -- */
+typedef struct {
+    double *values;
+    size_t count;
+} sampled_floats_ctx;
+
+static void *sampled_floats_transform(cbor_item_t *raw, void *ctx)
+{
+    sampled_floats_ctx *c = (sampled_floats_ctx *)ctx;
+    uint64_t idx = 0;
+    if (cbor_isa_uint(raw))
+        idx = cbor_get_uint_value(raw);
+    if (idx >= c->count)
+        idx = 0;
+    return cbor_build_float8(c->values[idx]);
+}
+
+static void sampled_floats_free_ctx(void *ctx)
+{
+    sampled_floats_ctx *c = (sampled_floats_ctx *)ctx;
+    free(c->values);
+    free(c);
+}
+
+hegel_generator *hegel_sampled_from_floats(const double *values, size_t count)
+{
+    if (!values || count == 0)
+        return NULL;
+
+    cbor_item_t *schema = cbor_new_definite_map(3);
+    if (!schema)
+        return NULL;
+    cbor_map_add_string(schema, "type", "integer");
+    cbor_map_add_int(schema, "min_value", 0);
+    cbor_map_add_int(schema, "max_value", (int64_t)(count - 1));
+
+    sampled_floats_ctx *ctx = malloc(sizeof(sampled_floats_ctx));
+    if (!ctx) {
+        cbor_decref(&schema);
+        return NULL;
+    }
+    ctx->count = count;
+    ctx->values = malloc(count * sizeof(double));
+    if (!ctx->values) {
+        cbor_decref(&schema);
+        free(ctx);
+        return NULL;
+    }
+    memcpy(ctx->values, values, count * sizeof(double));
+
+    return make_basic_gen(schema, sampled_floats_transform, ctx, sampled_floats_free_ctx);
+}
+
+/* -- sampled_from_bools -- */
+typedef struct {
+    bool *values;
+    size_t count;
+} sampled_bools_ctx;
+
+static void *sampled_bools_transform(cbor_item_t *raw, void *ctx)
+{
+    sampled_bools_ctx *c = (sampled_bools_ctx *)ctx;
+    uint64_t idx = 0;
+    if (cbor_isa_uint(raw))
+        idx = cbor_get_uint_value(raw);
+    if (idx >= c->count)
+        idx = 0;
+    return cbor_build_bool(c->values[idx]);
+}
+
+static void sampled_bools_free_ctx(void *ctx)
+{
+    sampled_bools_ctx *c = (sampled_bools_ctx *)ctx;
+    free(c->values);
+    free(c);
+}
+
+hegel_generator *hegel_sampled_from_bools(const bool *values, size_t count)
+{
+    if (!values || count == 0)
+        return NULL;
+
+    cbor_item_t *schema = cbor_new_definite_map(3);
+    if (!schema)
+        return NULL;
+    cbor_map_add_string(schema, "type", "integer");
+    cbor_map_add_int(schema, "min_value", 0);
+    cbor_map_add_int(schema, "max_value", (int64_t)(count - 1));
+
+    sampled_bools_ctx *ctx = malloc(sizeof(sampled_bools_ctx));
+    if (!ctx) {
+        cbor_decref(&schema);
+        return NULL;
+    }
+    ctx->count = count;
+    ctx->values = malloc(count * sizeof(bool));
+    if (!ctx->values) {
+        cbor_decref(&schema);
+        free(ctx);
+        return NULL;
+    }
+    memcpy(ctx->values, values, count * sizeof(bool));
+
+    return make_basic_gen(schema, sampled_bools_transform, ctx, sampled_bools_free_ctx);
+}
+
 /* Regex and format generators are in formats.c */

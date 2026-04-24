@@ -90,6 +90,10 @@ hegel_generator *hegel_just_bool(bool value);
 hegel_generator *hegel_sampled_from_strings(const char **values, size_t count);
 /* Sample from array of int values */
 hegel_generator *hegel_sampled_from_ints(const int64_t *values, size_t count);
+/* Sample from array of float values */
+hegel_generator *hegel_sampled_from_floats(const double *values, size_t count);
+/* Sample from array of bool values */
+hegel_generator *hegel_sampled_from_bools(const bool *values, size_t count);
 
 /* Regular expression */
 hegel_generator *hegel_from_regex(const char *pattern, bool fullmatch);
