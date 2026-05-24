@@ -231,8 +231,13 @@ static void test_just_null_schema(void **state)
     hegel_basic_gen *basic = gen->vtable.as_basic(gen);
     assert_non_null(basic);
 
-    /* Schema: {"constant": null} */
-    cbor_item_t *val = cbor_map_get(basic->schema, "constant");
+    /* Schema: {"type": "constant", "value": null} */
+    char *type = get_map_string(basic->schema, "type");
+    assert_non_null(type);
+    assert_string_equal(type, "constant");
+    free(type);
+
+    cbor_item_t *val = cbor_map_get(basic->schema, "value");
     assert_non_null(val);
     assert_true(cbor_is_null(val));
 
@@ -436,7 +441,7 @@ static void test_flat_map_non_basic(void **state)
 }
 
 /* ------------------------------------------------------------------
- * Test: one_of with all identity-transform basic generators
+ * Test: one_of with all basic generators
  * ------------------------------------------------------------------ */
 static void test_one_of_all_basic(void **state)
 {
@@ -451,18 +456,23 @@ static void test_one_of_all_basic(void **state)
     hegel_generator *combined = hegel_one_of(gens, 2);
     assert_non_null(combined);
 
-    /* All basic + identity = basic one_of */
+    /* All basic = basic one_of */
     hegel_basic_gen *basic = combined->vtable.as_basic(combined);
     assert_non_null(basic);
 
-    /* Schema should have a "one_of" key */
-    cbor_item_t *one_of_arr = cbor_map_get(basic->schema, "one_of");
-    assert_non_null(one_of_arr);
-    assert_true(cbor_isa_array(one_of_arr));
-    assert_int_equal(cbor_array_size(one_of_arr), 2);
+    /* Schema: {"type": "one_of", "generators": [...]} */
+    char *type = get_map_string(basic->schema, "type");
+    assert_non_null(type);
+    assert_string_equal(type, "one_of");
+    free(type);
 
-    /* No transform for Case 1 */
-    assert_null(basic->transform);
+    cbor_item_t *generators_arr = cbor_map_get(basic->schema, "generators");
+    assert_non_null(generators_arr);
+    assert_true(cbor_isa_array(generators_arr));
+    assert_int_equal(cbor_array_size(generators_arr), 2);
+
+    /* Always has a transform (unpacks [index, value]) */
+    assert_non_null(basic->transform);
 
     hegel_generator_free(combined);
 }

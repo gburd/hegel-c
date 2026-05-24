@@ -44,7 +44,7 @@ typedef enum {
 } hegel_error;
 
 /* Connection management */
-hegel_connection *hegel_connection_new(int socket_fd);
+hegel_connection *hegel_connection_new(int read_fd, int write_fd);
 void hegel_connection_free(hegel_connection *conn);
 int hegel_connection_handshake(hegel_connection *conn);
 

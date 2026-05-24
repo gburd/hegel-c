@@ -12,8 +12,6 @@
 struct hegel_session {
     hegel_connection *conn;
     pid_t server_pid;
-    char *socket_path;
-    char *temp_dir;
 };
 
 /*
@@ -23,7 +21,7 @@ struct hegel_session {
 hegel_session *hegel_session_new(void);
 
 /*
- * Free a session: close connection, kill server, clean up temp files.
+ * Free a session: close connection, kill server.
  */
 void hegel_session_free(hegel_session *s);
 

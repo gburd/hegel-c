@@ -365,14 +365,12 @@ hegel_generator *hegel_filter(hegel_generator *source, hegel_predicate_fn pred, 
 /* ================================================================
  * One-of combinator
  *
- * Case 1: ALL basic, ALL identity transforms
- *   Schema: {"one_of": [<schema0>, <schema1>, ...]}
+ * Basic case (ALL generators are basic):
+ *   Schema: {"type": "one_of", "generators": [<schema0>, <schema1>, ...]}
+ *   Wire response: server ALWAYS returns [index, value]
+ *   Transform: unpack [index, value], apply transforms[index] to value
  *
- * Case 2: ALL basic, SOME have transforms
- *   Schema: {"one_of": [{"type":"tuple","elements":[{"constant":0},<schema0>]}, ...]}
- *   Transform: read tag from tuple[0], apply branch's transform to tuple[1]
- *
- * Case 3: ANY non-basic
+ * Non-basic case (ANY generator is non-basic):
  *   Compositional: generate index via integers(0, count-1),
  *   then start_span(ONE_OF), draw from generators[index], stop_span(false)
  * ================================================================ */
@@ -385,7 +383,6 @@ typedef struct {
     /* Cached basic gen info */
     hegel_basic_gen **elem_basics;
     bool all_basic;
-    bool all_identity; /* all basic and no transforms */
     /* Cached schema for as_basic (built on first call, freed in oneof_free) */
     cbor_item_t *cached_schema;
     oneof_tagged_ctx *cached_tagged;
@@ -393,7 +390,7 @@ typedef struct {
     bool cache_valid;
 } oneof_gen_data;
 
-/* Transform for Case 2: tagged tuple approach */
+/* Transform context: unpacks [index, value] and applies per-branch transform */
 struct oneof_tagged_ctx {
     void *(**transforms)(cbor_item_t *, void *);
     void **transform_ctxs;
@@ -407,7 +404,7 @@ static void *oneof_tagged_transform(cbor_item_t *raw, void *ctx)
     if (!cbor_isa_array(raw) || cbor_array_size(raw) != 2)
         return NULL;
 
-    /* raw is [tag, value] */
+    /* raw is [index, value] */
     cbor_item_t *tag_item = cbor_array_get(raw, 0);
     cbor_item_t *value_item = cbor_array_get(raw, 1);
 
@@ -440,99 +437,48 @@ static hegel_basic_gen *oneof_as_basic(hegel_generator *self)
     if (!d->elem_basics)
         return NULL;
 
-    if (d->all_identity) {
-        /* Case 1: simple one_of with raw schemas */
-        cbor_item_t *schemas_arr = cbor_new_definite_array(d->count);
-        if (!schemas_arr)
-            return NULL;
+    /* Build schema: {"type": "one_of", "generators": [<schema0>, ...]} */
+    cbor_item_t *schemas_arr = cbor_new_definite_array(d->count);
+    if (!schemas_arr)
+        return NULL;
 
-        for (size_t i = 0; i < d->count; i++) {
-            cbor_incref(d->elem_basics[i]->schema);
-            cbor_array_push(schemas_arr, cbor_move(d->elem_basics[i]->schema));
-        }
-
-        d->cached_schema = cbor_new_definite_map(1);
-        if (!d->cached_schema) {
-            cbor_decref(&schemas_arr);
-            return NULL;
-        }
-        cbor_map_add_item(d->cached_schema, "one_of", schemas_arr);
-        cbor_decref(&schemas_arr);
-
-        d->cached_basic.schema = d->cached_schema;
-        d->cached_basic.transform = NULL;
-        d->cached_basic.transform_ctx = NULL;
-        d->cached_basic.free_ctx = NULL;
-    } else {
-        /* Case 2: tagged tuples */
-        cbor_item_t *schemas_arr = cbor_new_definite_array(d->count);
-        if (!schemas_arr)
-            return NULL;
-
-        for (size_t i = 0; i < d->count; i++) {
-            /* Build: {"type":"tuple","elements":[{"constant":<i>},<schema_i>]} */
-            cbor_item_t *const_schema = cbor_new_definite_map(1);
-            if (!const_schema) {
-                cbor_decref(&schemas_arr);
-                return NULL;
-            }
-            cbor_map_add_int(const_schema, "constant", (int64_t)i);
-
-            cbor_item_t *tuple_elements = cbor_new_definite_array(2);
-            if (!tuple_elements) {
-                cbor_decref(&const_schema);
-                cbor_decref(&schemas_arr);
-                return NULL;
-            }
-            cbor_array_push(tuple_elements, cbor_move(const_schema));
-            cbor_incref(d->elem_basics[i]->schema);
-            cbor_array_push(tuple_elements, cbor_move(d->elem_basics[i]->schema));
-
-            cbor_item_t *tuple_schema = cbor_new_definite_map(2);
-            if (!tuple_schema) {
-                cbor_decref(&tuple_elements);
-                cbor_decref(&schemas_arr);
-                return NULL;
-            }
-            cbor_map_add_string(tuple_schema, "type", "tuple");
-            cbor_map_add_item(tuple_schema, "elements", tuple_elements);
-            cbor_decref(&tuple_elements);
-
-            cbor_array_push(schemas_arr, cbor_move(tuple_schema));
-        }
-
-        d->cached_schema = cbor_new_definite_map(1);
-        if (!d->cached_schema) {
-            cbor_decref(&schemas_arr);
-            return NULL;
-        }
-        cbor_map_add_item(d->cached_schema, "one_of", schemas_arr);
-        cbor_decref(&schemas_arr);
-
-        /* Build tagged transform context */
-        d->cached_tagged = calloc(1, sizeof(oneof_tagged_ctx));
-        if (!d->cached_tagged)
-            return NULL;
-        d->cached_tagged->count = d->count;
-        d->cached_tagged->transforms = calloc(d->count, sizeof(void *));
-        d->cached_tagged->transform_ctxs = calloc(d->count, sizeof(void *));
-        if (!d->cached_tagged->transforms || !d->cached_tagged->transform_ctxs) {
-            free(d->cached_tagged->transforms);
-            free(d->cached_tagged->transform_ctxs);
-            free(d->cached_tagged);
-            d->cached_tagged = NULL;
-            return NULL;
-        }
-        for (size_t i = 0; i < d->count; i++) {
-            d->cached_tagged->transforms[i] = d->elem_basics[i]->transform;
-            d->cached_tagged->transform_ctxs[i] = d->elem_basics[i]->transform_ctx;
-        }
-
-        d->cached_basic.schema = d->cached_schema;
-        d->cached_basic.transform = oneof_tagged_transform;
-        d->cached_basic.transform_ctx = d->cached_tagged;
-        d->cached_basic.free_ctx = NULL;
+    for (size_t i = 0; i < d->count; i++) {
+        cbor_incref(d->elem_basics[i]->schema);
+        cbor_array_push(schemas_arr, cbor_move(d->elem_basics[i]->schema));
     }
+
+    d->cached_schema = cbor_new_definite_map(2);
+    if (!d->cached_schema) {
+        cbor_decref(&schemas_arr);
+        return NULL;
+    }
+    cbor_map_add_string(d->cached_schema, "type", "one_of");
+    cbor_map_add_item(d->cached_schema, "generators", schemas_arr);
+    cbor_decref(&schemas_arr);
+
+    /* Build transform context to unpack [index, value] */
+    d->cached_tagged = calloc(1, sizeof(oneof_tagged_ctx));
+    if (!d->cached_tagged)
+        return NULL;
+    d->cached_tagged->count = d->count;
+    d->cached_tagged->transforms = calloc(d->count, sizeof(void *));
+    d->cached_tagged->transform_ctxs = calloc(d->count, sizeof(void *));
+    if (!d->cached_tagged->transforms || !d->cached_tagged->transform_ctxs) {
+        free(d->cached_tagged->transforms);
+        free(d->cached_tagged->transform_ctxs);
+        free(d->cached_tagged);
+        d->cached_tagged = NULL;
+        return NULL;
+    }
+    for (size_t i = 0; i < d->count; i++) {
+        d->cached_tagged->transforms[i] = d->elem_basics[i]->transform;
+        d->cached_tagged->transform_ctxs[i] = d->elem_basics[i]->transform_ctx;
+    }
+
+    d->cached_basic.schema = d->cached_schema;
+    d->cached_basic.transform = oneof_tagged_transform;
+    d->cached_basic.transform_ctx = d->cached_tagged;
+    d->cached_basic.free_ctx = NULL;
 
     d->cache_valid = true;
     return &d->cached_basic;
@@ -619,7 +565,6 @@ hegel_generator *hegel_one_of(hegel_generator **generators, size_t count)
     /* Check if all generators are basic */
     d->elem_basics = calloc(count, sizeof(hegel_basic_gen *));
     d->all_basic = true;
-    d->all_identity = true;
 
     if (d->elem_basics) {
         for (size_t i = 0; i < count; i++) {
@@ -628,16 +573,11 @@ hegel_generator *hegel_one_of(hegel_generator **generators, size_t count)
 
             if (!d->elem_basics[i]) {
                 d->all_basic = false;
-                d->all_identity = false;
                 break;
-            }
-            if (d->elem_basics[i]->transform) {
-                d->all_identity = false;
             }
         }
     } else {
         d->all_basic = false;
-        d->all_identity = false;
     }
 
     return hegel_generator_alloc(oneof_vtable, d);

@@ -22,22 +22,23 @@ typedef struct {
 } hegel_stream_entry;
 
 /*
- * Connection state: manages socket I/O, stream registry, and thread safety.
+ * Connection state: manages pipe I/O, stream registry, and thread safety.
  *
  * Uses a demand-driven reader model: no background thread. When a stream
  * needs a packet, the calling thread acquires the reader lock, reads from
- * the socket, and dispatches packets to stream inboxes.
+ * the pipe, and dispatches packets to stream inboxes.
  */
 struct hegel_connection {
-    int socket_fd;
+    int read_fd;
+    int write_fd;
 
     /* Stream counter for allocating odd client stream IDs */
     atomic_uint_fast32_t next_stream_counter;
 
-    /* Writer mutex: only one thread writes to the socket at a time */
+    /* Writer mutex: only one thread writes at a time */
     pthread_mutex_t writer_mu;
 
-    /* Reader mutex: only one thread reads from the socket at a time */
+    /* Reader mutex: only one thread reads at a time */
     pthread_mutex_t reader_mu;
 
     /* Stream registry */
@@ -74,7 +75,7 @@ void hegel_connection_unregister_stream(hegel_connection *conn, uint32_t stream_
 hegel_stream *hegel_connection_find_stream(hegel_connection *conn, uint32_t stream_id);
 
 /*
- * Read one packet from the socket (called under reader_mu).
+ * Read one packet from the read_fd (called under reader_mu).
  * Fills *pkt. Returns HEGEL_OK or error.
  */
 int hegel_connection_read_packet(hegel_connection *conn, hegel_packet *pkt);

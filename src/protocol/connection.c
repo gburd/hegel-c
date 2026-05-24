@@ -31,13 +31,14 @@ static const size_t HANDSHAKE_REQUEST_LEN = sizeof(HANDSHAKE_REQUEST) - 1; /* ex
 static const char HANDSHAKE_PREFIX[] = "Hegel/";
 static const size_t HANDSHAKE_PREFIX_LEN = sizeof(HANDSHAKE_PREFIX) - 1;
 
-hegel_connection *hegel_connection_new(int socket_fd)
+hegel_connection *hegel_connection_new(int read_fd, int write_fd)
 {
     hegel_connection *conn = calloc(1, sizeof(hegel_connection));
     if (!conn)
         return NULL;
 
-    conn->socket_fd = socket_fd;
+    conn->read_fd = read_fd;
+    conn->write_fd = write_fd;
     atomic_init(&conn->next_stream_counter, 1);
     atomic_init(&conn->closed, false);
     conn->handshake_done = false;
@@ -95,9 +96,13 @@ void hegel_connection_free(hegel_connection *conn)
     pthread_mutex_destroy(&conn->reader_mu);
     pthread_mutex_destroy(&conn->streams_mu);
 
-    if (conn->socket_fd >= 0) {
-        close(conn->socket_fd);
-        conn->socket_fd = -1;
+    if (conn->read_fd >= 0) {
+        close(conn->read_fd);
+        conn->read_fd = -1;
+    }
+    if (conn->write_fd >= 0) {
+        close(conn->write_fd);
+        conn->write_fd = -1;
     }
 
     free(conn);
@@ -153,7 +158,7 @@ int hegel_connection_read_packet(hegel_connection *conn, hegel_packet *pkt)
 
     /* Read 20-byte header */
     uint8_t header[HEGEL_HEADER_SIZE];
-    int rc = hegel_read_exact(conn->socket_fd, header, HEGEL_HEADER_SIZE);
+    int rc = hegel_read_exact(conn->read_fd, header, HEGEL_HEADER_SIZE);
     if (rc != HEGEL_OK) {
         atomic_store(&conn->closed, true);
         return rc;
@@ -175,7 +180,7 @@ int hegel_connection_read_packet(hegel_connection *conn, hegel_packet *pkt)
 
     /* Read payload + terminator */
     if (payload_len + 1 > 0) {
-        rc = hegel_read_exact(conn->socket_fd, buf + HEGEL_HEADER_SIZE, payload_len + 1);
+        rc = hegel_read_exact(conn->read_fd, buf + HEGEL_HEADER_SIZE, payload_len + 1);
         if (rc != HEGEL_OK) {
             free(buf);
             atomic_store(&conn->closed, true);
@@ -209,7 +214,7 @@ int hegel_connection_send_packet(hegel_connection *conn, const hegel_packet *pkt
         return rc;
 
     pthread_mutex_lock(&conn->writer_mu);
-    rc = hegel_write_exact(conn->socket_fd, buf, len);
+    rc = hegel_write_exact(conn->write_fd, buf, len);
     pthread_mutex_unlock(&conn->writer_mu);
 
     free(buf);

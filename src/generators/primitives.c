@@ -318,7 +318,7 @@ hegel_generator *hegel_nulls(void)
 /* ================================================================
  * Just (constant) generators
  *
- * Schema is always {"constant": null}.
+ * Schema is always {"type": "constant", "value": <the constant>}.
  * The transform ignores the raw value and returns the stored constant.
  * ================================================================ */
 
@@ -332,12 +332,14 @@ static void *just_null_transform(cbor_item_t *raw, void *ctx)
 
 hegel_generator *hegel_just_null(void)
 {
-    cbor_item_t *schema = cbor_new_definite_map(1);
+    cbor_item_t *schema = cbor_new_definite_map(2);
     if (!schema)
         return NULL;
 
-    /* Add "constant": null */
-    cbor_item_t *k = cbor_build_string("constant");
+    cbor_map_add_string(schema, "type", "constant");
+
+    /* Add "value": null */
+    cbor_item_t *k = cbor_build_string("value");
     cbor_item_t *v = cbor_new_null();
     if (k && v) {
         struct cbor_pair pair = {.key = cbor_move(k), .value = cbor_move(v)};
@@ -374,12 +376,19 @@ static void just_int_free_ctx(void *ctx)
 
 hegel_generator *hegel_just_int(int64_t value)
 {
-    cbor_item_t *schema = cbor_new_definite_map(1);
+    cbor_item_t *schema = cbor_new_definite_map(2);
     if (!schema)
         return NULL;
 
-    cbor_item_t *k = cbor_build_string("constant");
-    cbor_item_t *v = cbor_new_null();
+    cbor_map_add_string(schema, "type", "constant");
+
+    /* Add "value": <integer> */
+    cbor_item_t *k = cbor_build_string("value");
+    cbor_item_t *v;
+    if (value >= 0)
+        v = cbor_build_uint64((uint64_t)value);
+    else
+        v = cbor_build_negint64((uint64_t)(-1 - value));
     if (k && v) {
         struct cbor_pair pair = {.key = cbor_move(k), .value = cbor_move(v)};
         cbor_map_add(schema, pair);
@@ -419,12 +428,15 @@ static void just_float_free_ctx(void *ctx)
 
 hegel_generator *hegel_just_float(double value)
 {
-    cbor_item_t *schema = cbor_new_definite_map(1);
+    cbor_item_t *schema = cbor_new_definite_map(2);
     if (!schema)
         return NULL;
 
-    cbor_item_t *k = cbor_build_string("constant");
-    cbor_item_t *v = cbor_new_null();
+    cbor_map_add_string(schema, "type", "constant");
+
+    /* Add "value": <float> */
+    cbor_item_t *k = cbor_build_string("value");
+    cbor_item_t *v = cbor_build_float8(value);
     if (k && v) {
         struct cbor_pair pair = {.key = cbor_move(k), .value = cbor_move(v)};
         cbor_map_add(schema, pair);
@@ -469,12 +481,15 @@ hegel_generator *hegel_just_string(const char *value)
     if (!value)
         return NULL;
 
-    cbor_item_t *schema = cbor_new_definite_map(1);
+    cbor_item_t *schema = cbor_new_definite_map(2);
     if (!schema)
         return NULL;
 
-    cbor_item_t *k = cbor_build_string("constant");
-    cbor_item_t *v = cbor_new_null();
+    cbor_map_add_string(schema, "type", "constant");
+
+    /* Add "value": <string> */
+    cbor_item_t *k = cbor_build_string("value");
+    cbor_item_t *v = cbor_build_string(value);
     if (k && v) {
         struct cbor_pair pair = {.key = cbor_move(k), .value = cbor_move(v)};
         cbor_map_add(schema, pair);
@@ -519,12 +534,15 @@ static void just_bool_free_ctx(void *ctx)
 
 hegel_generator *hegel_just_bool(bool value)
 {
-    cbor_item_t *schema = cbor_new_definite_map(1);
+    cbor_item_t *schema = cbor_new_definite_map(2);
     if (!schema)
         return NULL;
 
-    cbor_item_t *k = cbor_build_string("constant");
-    cbor_item_t *v = cbor_new_null();
+    cbor_map_add_string(schema, "type", "constant");
+
+    /* Add "value": <bool> */
+    cbor_item_t *k = cbor_build_string("value");
+    cbor_item_t *v = cbor_build_bool(value);
     if (k && v) {
         struct cbor_pair pair = {.key = cbor_move(k), .value = cbor_move(v)};
         cbor_map_add(schema, pair);

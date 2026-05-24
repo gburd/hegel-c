@@ -73,15 +73,54 @@ static hegel_generator *make_format_gen(const char *type_name)
     return make_fmt_gen(schema);
 }
 
-hegel_generator *hegel_emails(void)        { return make_format_gen("email"); }
-hegel_generator *hegel_urls(void)          { return make_format_gen("url"); }
-hegel_generator *hegel_domains(void)       { return make_format_gen("domain"); }
-hegel_generator *hegel_ip4_addresses(void) { return make_format_gen("ipv4"); }
-hegel_generator *hegel_ip6_addresses(void) { return make_format_gen("ipv6"); }
-hegel_generator *hegel_ip_addresses(void)  { return make_format_gen("ip"); }
-hegel_generator *hegel_dates(void)         { return make_format_gen("date"); }
-hegel_generator *hegel_times(void)         { return make_format_gen("time"); }
-hegel_generator *hegel_datetimes(void)     { return make_format_gen("datetime"); }
+hegel_generator *hegel_emails(void)    { return make_format_gen("email"); }
+hegel_generator *hegel_urls(void)      { return make_format_gen("url"); }
+hegel_generator *hegel_domains(void)   { return make_format_gen("domain"); }
+hegel_generator *hegel_dates(void)     { return make_format_gen("date"); }
+hegel_generator *hegel_times(void)     { return make_format_gen("time"); }
+hegel_generator *hegel_datetimes(void) { return make_format_gen("datetime"); }
+
+/* IP address generators use {"type": "ip_address", "version": N} */
+hegel_generator *hegel_ip4_addresses(void)
+{
+    cbor_item_t *schema = cbor_new_definite_map(2);
+    if (!schema)
+        return NULL;
+    cbor_map_add_string(schema, "type", "ip_address");
+    cbor_map_add_int(schema, "version", 4);
+    return make_fmt_gen(schema);
+}
+
+hegel_generator *hegel_ip6_addresses(void)
+{
+    cbor_item_t *schema = cbor_new_definite_map(2);
+    if (!schema)
+        return NULL;
+    cbor_map_add_string(schema, "type", "ip_address");
+    cbor_map_add_int(schema, "version", 6);
+    return make_fmt_gen(schema);
+}
+
+hegel_generator *hegel_ip_addresses(void)
+{
+    /* one_of(ip4, ip6) — uses the one_of combinator */
+    hegel_generator *ip4 = hegel_ip4_addresses();
+    if (!ip4)
+        return NULL;
+    hegel_generator *ip6 = hegel_ip6_addresses();
+    if (!ip6) {
+        hegel_generator_free(ip4);
+        return NULL;
+    }
+    hegel_generator *gens[2] = { ip4, ip6 };
+    hegel_generator *result = hegel_one_of(gens, 2);
+    if (!result) {
+        hegel_generator_free(ip4);
+        hegel_generator_free(ip6);
+        return NULL;
+    }
+    return result;
+}
 
 /* ================================================================
  * Regex
