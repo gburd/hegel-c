@@ -108,6 +108,8 @@ hegel_generator *hegel_ip_addresses(void);  /* v4 or v6 */
 hegel_generator *hegel_dates(void);
 hegel_generator *hegel_times(void);
 hegel_generator *hegel_datetimes(void);
+hegel_generator *hegel_uuids(void);               /* any version */
+hegel_generator *hegel_uuids_version(int version); /* specific version (1-5) */
 
 /* === Collection Generators === */
 

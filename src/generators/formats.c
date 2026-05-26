@@ -123,6 +123,25 @@ hegel_generator *hegel_ip_addresses(void)
 }
 
 /* ================================================================
+ * UUID generators
+ * ================================================================ */
+
+hegel_generator *hegel_uuids(void)
+{
+    return make_format_gen("uuid");
+}
+
+hegel_generator *hegel_uuids_version(int version)
+{
+    cbor_item_t *schema = cbor_new_definite_map(2);
+    if (!schema)
+        return NULL;
+    cbor_map_add_string(schema, "type", "uuid");
+    cbor_map_add_int(schema, "version", (int64_t)version);
+    return make_fmt_gen(schema);
+}
+
+/* ================================================================
  * Regex
  * ================================================================ */
 
