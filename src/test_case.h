@@ -30,6 +30,12 @@ struct hegel_test_case {
     jmp_buf escape_jmp;
     hegel_jmp_reason jmp_reason;
 
+    /* Generator currently being drawn, if any.  A StopTest/assume/fail
+       longjmp can unwind out of hegel_draw_raw before it frees the
+       generator it was handed; the run_test setjmp handler frees this so
+       the consume-on-draw contract does not leak on the longjmp path. */
+    void *inflight_gen;
+
     /* Error message captured when status is INTERESTING */
     char *error_message;
 };

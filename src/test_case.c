@@ -115,14 +115,33 @@ void hegel_note(const char *message)
  * which handles both basic (schema-based) and non-basic (compositional)
  * generation.
  *
+ * Ownership: the public draw functions CONSUME the generator.  This function
+ * frees `gen` (and, transitively, any child generators it owns) before
+ * returning, so the idiomatic inline pattern
+ *     int64_t v = hegel_draw_int(tc, hegel_integers(0, 100));
+ * does not leak.  Compositional generators draw their children via
+ * hegel_draw_internal(), which does NOT free, so child lifetimes during a
+ * single draw are unaffected.  Do not draw from the same generator twice;
+ * create a fresh one for each draw.
+ *
  * Returns a cbor_item_t* owned by the caller, or NULL on error.
  */
 void *hegel_draw_raw(hegel_test_case *tc, hegel_generator *gen)
 {
-    if (!tc || !gen || !tc->stream)
+    if (!gen)
         return NULL;
 
-    return hegel_draw_internal(tc, gen);
+    void *result = NULL;
+    if (tc && tc->stream) {
+        /* Record the in-flight generator so a StopTest/assume/fail longjmp
+           out of hegel_draw_internal does not leak it (run_test frees it). */
+        tc->inflight_gen = gen;
+        result = hegel_draw_internal(tc, gen);
+        tc->inflight_gen = NULL;
+    }
+
+    hegel_generator_free(gen);
+    return result;
 }
 
 /*
