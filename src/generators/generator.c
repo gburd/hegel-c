@@ -65,7 +65,12 @@ static cbor_item_t *send_tc_request(hegel_test_case *tc, cbor_item_t *request)
         if (type_str && strcmp(type_str, "StopTest") == 0) {
             free(type_str);
             cbor_decref(&reply);
-            /* StopTest: longjmp out */
+            /* StopTest longjmps out of the caller, so the caller's own
+               cbor_decref(&request) after this function never runs.  Free the
+               request here to avoid leaking the protocol command map (and,
+               via the schema it holds a ref to, nothing else -- schemas are
+               owned by their generators). */
+            cbor_decref(&request);
             tc->aborted = true;
             tc->jmp_reason = HEGEL_JMP_STOP_TEST;
             longjmp(tc->escape_jmp, HEGEL_JMP_STOP_TEST);

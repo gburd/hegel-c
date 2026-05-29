@@ -9,12 +9,23 @@
  * Unwrap CBOR tags to get the inner content item.
  * The server (Python/cbor2) may wrap values in CBOR tags (e.g. tag(91) for
  * text as bytestrings). This helper peels all tag layers to reach the
- * underlying data item.
+ * underlying data item and returns a BORROWED pointer (the returned item is
+ * still owned by its enclosing tag; do not decref it).
+ *
+ * NOTE: libcbor's cbor_tag_item() INCREMENTS the tagged item's refcount.
+ * We immediately drop that extra reference so this stays a pure borrow --
+ * the enclosing tag still holds a reference, so the inner item remains alive.
+ * Without this, every tag unwrap (e.g. every tagged-bytestring text draw)
+ * leaks one reference to the inner item.
  */
 static inline const cbor_item_t *cbor_unwrap_tags(const cbor_item_t *item)
 {
-    while (item && cbor_isa_tag(item))
-        item = cbor_tag_item(item);
+    while (item && cbor_isa_tag(item)) {
+        cbor_item_t *inner = cbor_tag_item(item); /* +1 ref */
+        cbor_item_t *drop = inner;
+        cbor_decref(&drop); /* back to a borrow; the tag keeps inner alive */
+        item = inner;
+    }
     return item;
 }
 

@@ -1,5 +1,6 @@
 #include "hegel/hegel.h"
 #include "hegel/protocol.h"
+#include "hegel/generators.h"
 #include "runner.h"
 #include "test_case.h"
 #include "protocol/cbor_helpers.h"
@@ -288,6 +289,13 @@ hegel_results hegel_run_test(hegel_session *s, hegel_test_fn fn, void *user_data
                                    tc.error_message);
             } else if (jmp_val == HEGEL_JMP_STOP_TEST) {
                 /* StopTest: do NOT send mark_complete */
+            }
+
+            /* If a longjmp unwound out of an in-flight draw, free the
+               generator it was consuming (the consume-on-draw contract). */
+            if (jmp_val != 0 && tc.inflight_gen != NULL) {
+                hegel_generator_free((hegel_generator *)tc.inflight_gen);
+                tc.inflight_gen = NULL;
             }
 
             /* Clear thread-local */
