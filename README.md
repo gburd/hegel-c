@@ -1,9 +1,19 @@
-> [!IMPORTANT]
-> We're excited you're checking out Hegel! Hegel is in beta, and we'd love for you to try it and [report any feedback](https://github.com/hegeldev/hegel-c/issues/new).
+> [!WARNING]
+> **This repository is deprecated and read-only.**
 >
-> As part of our beta, we may make breaking changes if it makes Hegel a better property-based testing library. If that instability bothers you, please check back in a few months for a stable release!
+> This was an unofficial C client for the old Hegel socket protocol, which
+> Hegel no longer uses. The protocol it implements has been removed upstream
+> and this code no longer works against current Hegel.
 >
-> See https://hegel.dev/compatibility for more details.
+> There is now an official Hegel C library. Use it instead:
+>
+> - Source: https://github.com/hegeldev/hegel-rust/tree/main/hegel-c
+> - Prebuilt `libhegel` releases: https://github.com/hegeldev/hegel-rust/releases
+> - Website: https://hegel.dev
+>
+> The official library uses an in-process FFI approach (a native shared
+> library with a C ABI), not the subprocess/socket protocol this repository
+> was built around. No migration path from this code is provided.
 
 # Hegel for C
 
